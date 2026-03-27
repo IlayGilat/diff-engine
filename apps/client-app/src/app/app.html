@@ -1,0 +1,57 @@
+<main class="shell">
+  <section class="hero" *ngIf="dashboardSummary$ | async as summary">
+    <div>
+      <p class="eyebrow">Parli Realtime Testbed</p>
+      <h1>Visual diff streaming for separate domain stores</h1>
+      <p class="subtitle">
+        Core socket logic lives in reusable infrastructure, while each domain owns
+        only its business shape and feature store.
+      </p>
+    </div>
+
+    <div class="hero-stats">
+      <article>
+        <span>Connected domains</span>
+        <strong>{{ summary.connectedDomains }}/2</strong>
+      </article>
+      <article>
+        <span>Tracked patch events</span>
+        <strong>{{ summary.patchEvents }}</strong>
+      </article>
+      <article>
+        <span>Latest update</span>
+        <strong>{{ summary.latestUpdate }}</strong>
+      </article>
+    </div>
+  </section>
+
+  <section class="control-strip">
+    <label for="email">User email</label>
+    <input
+      id="email"
+      type="email"
+      [(ngModel)]="email"
+      placeholder="name@example.com"
+    />
+    <p>
+      Both domains subscribe with the same identity, but each domain keeps its own
+      independent NgRx store and Socket.IO connection lifecycle.
+    </p>
+  </section>
+
+  <section class="dashboard">
+    <app-overview-panel
+      [state]="overviewState$ | async"
+      [description]="overviewDomainFacade.definition.description"
+      (connect)="connectOverview()"
+      (disconnect)="disconnectOverview()"
+    ></app-overview-panel>
+
+    <app-activity-panel
+      [state]="activityState$ | async"
+      [description]="activityDomainFacade.definition.description"
+      (connect)="connectActivity()"
+      (disconnect)="disconnectActivity()"
+    ></app-activity-panel>
+  </section>
+</main>
