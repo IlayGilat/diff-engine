@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { JsonObject, PollingSubscriptionTarget } from '@org/models';
-import { ActivityExternalSourceService } from '../../domains/activity/activity-external-source.service';
-import { OverviewExternalSourceService } from '../../domains/overview/overview-external-source.service';
+import { ActivityDomainSourceService } from '../../domains/activity/activity-domain-source.service';
+import { OverviewDomainSourceService } from '../../domains/overview/overview-domain-source.service';
 import { AbstractPollingDomainSource } from './polling-domain-source.abstract';
 
 @Injectable()
@@ -9,12 +9,12 @@ export class PollingDomainRegistryService {
   private readonly sources: Array<AbstractPollingDomainSource<string, JsonObject>>;
 
   constructor(
-    overviewExternalSourceService: OverviewExternalSourceService,
-    activityExternalSourceService: ActivityExternalSourceService,
+    overviewDomainSourceService: OverviewDomainSourceService,
+    activityDomainSourceService: ActivityDomainSourceService,
   ) {
     this.sources = [
-      overviewExternalSourceService,
-      activityExternalSourceService,
+      overviewDomainSourceService,
+      activityDomainSourceService,
     ];
   }
 

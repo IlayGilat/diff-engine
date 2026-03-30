@@ -26,11 +26,11 @@ export class InMemorySnapshotStoreAdapter implements SnapshotStoreAdapter {
     this.records.delete(sessionKey);
   }
 
-  listBySocket<TSnapshot extends JsonObject>(
-    socketId: string,
+  listByStreamId<TSnapshot extends JsonObject>(
+    streamId: string,
   ): Array<SnapshotSessionRecord<TSnapshot>> {
     return Array.from(this.records.values()).filter(
-      (record) => record.socketId === socketId,
+      (record) => record.streamId === streamId,
     ) as Array<SnapshotSessionRecord<TSnapshot>>;
   }
 }

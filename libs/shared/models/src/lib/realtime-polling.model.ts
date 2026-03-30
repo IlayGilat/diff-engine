@@ -1,15 +1,6 @@
 import { Operation } from 'fast-json-patch';
 import { JsonObject } from './json-value.model';
 
-export const DIFF_ENGINE_SOCKET_EVENTS = {
-  startPolling: 'start-polling',
-  stopPolling: 'stop-polling',
-  fullState: 'FULL_STATE',
-  patch: 'PATCH',
-  startError: 'START_ERROR',
-  pollingError: 'POLLING_ERROR',
-} as const;
-
 export type PollingConnectionState =
   | 'disconnected'
   | 'connecting'

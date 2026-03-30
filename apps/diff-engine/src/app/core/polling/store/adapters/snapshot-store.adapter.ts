@@ -9,7 +9,7 @@ export interface SnapshotStoreAdapter {
     sessionKey: string,
   ): SnapshotSessionRecord<TSnapshot> | undefined;
   delete(sessionKey: string): void;
-  listBySocket<TSnapshot extends JsonObject>(
-    socketId: string,
+  listByStreamId<TSnapshot extends JsonObject>(
+    streamId: string,
   ): Array<SnapshotSessionRecord<TSnapshot>>;
 }

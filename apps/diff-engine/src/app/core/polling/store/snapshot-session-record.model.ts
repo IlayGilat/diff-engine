@@ -5,7 +5,7 @@ export interface SnapshotSessionRecord<
   TDomain extends string = string,
 > {
   sessionKey: string;
-  socketId: string;
+  streamId: string;
   sourceKey: string;
   target: PollingSubscriptionTarget<TDomain>;
   version: number;
@@ -17,13 +17,13 @@ export function createSnapshotSessionRecord<
   TDomain extends string,
 >(
   sessionKey: string,
-  socketId: string,
+  streamId: string,
   target: PollingSubscriptionTarget<TDomain>,
   snapshot: TSnapshot,
 ): SnapshotSessionRecord<TSnapshot, TDomain> {
   return {
     sessionKey,
-    socketId,
+    streamId,
     sourceKey: buildSourceKey(target),
     target,
     version: 1,

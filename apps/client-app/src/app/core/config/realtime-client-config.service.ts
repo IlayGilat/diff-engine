@@ -4,5 +4,6 @@ import { Injectable } from '@angular/core';
   providedIn: 'root',
 })
 export class RealtimeClientConfigService {
-  readonly diffEngineUrl = 'http://localhost:3335';
+  readonly diffEngineHttpUrl = 'http://localhost:3335/graphql';
+  readonly diffEngineWsUrl = 'ws://localhost:3335/graphql';
 }

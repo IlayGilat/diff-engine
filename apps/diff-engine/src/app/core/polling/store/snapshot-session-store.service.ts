@@ -17,12 +17,12 @@ export class SnapshotSessionStoreService {
 
   create<TSnapshot extends JsonObject, TDomain extends string>(
     sessionKey: string,
-    socketId: string,
+    streamId: string,
     target: PollingSubscriptionTarget<TDomain>,
     snapshot: TSnapshot,
   ): SnapshotSessionRecord<TSnapshot, TDomain> {
     return this.snapshotStoreAdapter.set(
-      createSnapshotSessionRecord(sessionKey, socketId, target, snapshot),
+      createSnapshotSessionRecord(sessionKey, streamId, target, snapshot),
     ) as SnapshotSessionRecord<TSnapshot, TDomain>;
   }
 
@@ -32,10 +32,10 @@ export class SnapshotSessionStoreService {
     return this.snapshotStoreAdapter.get(sessionKey);
   }
 
-  listBySocket<TSnapshot extends JsonObject>(
-    socketId: string,
+  listByStreamId<TSnapshot extends JsonObject>(
+    streamId: string,
   ): Array<SnapshotSessionRecord<TSnapshot>> {
-    return this.snapshotStoreAdapter.listBySocket(socketId);
+    return this.snapshotStoreAdapter.listByStreamId(streamId);
   }
 
   updateSnapshot<TSnapshot extends JsonObject>(

@@ -1,20 +1,18 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
-  DIFF_ENGINE_SOCKET_EVENTS,
   JsonObject,
-  PollingStopTarget,
   PollingPatchEnvelope,
   PollingSnapshotEnvelope,
+  PollingStopTarget,
   PollingStreamErrorEnvelope,
   PollingSubscriptionTarget,
-  buildSourceKey,
   normalizePollingTarget,
 } from '@org/models';
-import { Socket } from 'socket.io';
+import { PollingEventPublisherService } from '../realtime/polling-event-publisher.service';
 import { DiffPatchService } from './diff-patch.service';
 import { PollingDomainRegistryService } from './polling-domain-registry.service';
 import { PollingRuntimeRegistryService } from './runtime/polling-runtime-registry.service';
-import { buildSocketDomainSessionKey } from './runtime/session-key.util';
+import { buildStreamDomainSessionKey } from './runtime/session-key.util';
 import { SnapshotSessionStoreService } from './store/snapshot-session-store.service';
 
 @Injectable()
@@ -26,102 +24,77 @@ export class PollingOrchestratorService {
     private readonly snapshotSessionStoreService: SnapshotSessionStoreService,
     private readonly pollingRuntimeRegistryService: PollingRuntimeRegistryService,
     private readonly diffPatchService: DiffPatchService,
+    private readonly pollingEventPublisherService: PollingEventPublisherService,
   ) {}
 
   async start(
-    client: Socket,
+    streamId: string,
     rawTarget: PollingSubscriptionTarget<string>,
-  ): Promise<void> {
+  ): Promise<PollingSnapshotEnvelope<JsonObject, string>> {
     const target = normalizePollingTarget(rawTarget);
-    const sourceKey = buildSourceKey(target);
 
     if (!target.domain || !target.email) {
-      this.emitError(client, {
-        sourceKey,
-        target,
-        phase: 'connect',
-        receivedAt: new Date().toISOString(),
-        message: 'Both domain and email are required.',
-      });
-      return;
+      throw new Error('Both domain and email are required.');
     }
 
-    this.stopDomain(client.id, {
+    this.stopDomain(streamId, {
       domain: target.domain,
     });
 
     try {
       const domainSource = this.pollingDomainRegistryService.resolve(target);
-      const snapshot = await domainSource.fetchSnapshot(target);
-      const sessionKey = buildSocketDomainSessionKey(client.id, target.domain);
+      const snapshot = await domainSource.fetch(target);
+      const sessionKey = buildStreamDomainSessionKey(streamId, target.domain);
       const intervalId = setInterval(() => {
-        void this.pollDomain(client, target.domain);
+        void this.pollDomain(streamId, target.domain);
       }, domainSource.getPollIntervalMs());
 
       const session = this.snapshotSessionStoreService.create(
         sessionKey,
-        client.id,
+        streamId,
         target,
         snapshot,
       );
       this.pollingRuntimeRegistryService.register(sessionKey, intervalId);
 
-      this.emitSnapshot(client, {
+      const envelope: PollingSnapshotEnvelope<JsonObject, string> = {
         sourceKey: session.sourceKey,
         target: session.target,
         version: session.version,
         receivedAt: new Date().toISOString(),
         snapshot,
-      });
+      };
 
       this.logger.log(
-        'Started polling for socket ' + client.id + ' on ' + session.sourceKey,
+        'Started polling for stream ' + streamId + ' on ' + session.sourceKey,
       );
+      return envelope;
     } catch (error) {
-      this.emitError(client, {
-        sourceKey,
-        target,
-        phase: 'connect',
-        receivedAt: new Date().toISOString(),
-        message: this.getErrorMessage(error, 'Failed to start polling.'),
-      });
+      throw new Error(this.getErrorMessage(error, 'Failed to start polling.'));
     }
   }
 
-  stopSocket(socketId: string): void {
-    const records = this.snapshotSessionStoreService.listBySocket(socketId);
-    records.forEach((record) => {
-      this.stopDomain(socketId, {
-        domain: record.target.domain,
-      });
-    });
-  }
-
-  stopDomain(socketId: string, target: PollingStopTarget<string>): void {
-    const sessionKey = buildSocketDomainSessionKey(socketId, target.domain);
+  stopDomain(streamId: string, target: PollingStopTarget<string>): boolean {
+    const sessionKey = buildStreamDomainSessionKey(streamId, target.domain);
     const session = this.snapshotSessionStoreService.get(sessionKey);
     if (!session) {
-      return;
+      return false;
     }
 
     this.pollingRuntimeRegistryService.clear(sessionKey);
     this.snapshotSessionStoreService.delete(sessionKey);
     this.logger.log(
-      'Stopped polling for socket ' +
-        socketId +
+      'Stopped polling for stream ' +
+        streamId +
         ' on domain ' +
         target.domain +
         '.',
     );
+    return true;
   }
 
-  private async pollDomain(client: Socket, domain: string): Promise<void> {
-    if (!client.connected) {
-      this.stopSocket(client.id);
-      return;
-    }
-
-    const sessionKey = buildSocketDomainSessionKey(client.id, domain);
+  private async pollDomain(streamId: string, domain: string): Promise<void> {
+    const sessionKey = buildStreamDomainSessionKey(streamId, domain);
     const canPoll = this.pollingRuntimeRegistryService.tryBeginPolling(sessionKey);
     if (!canPoll) {
       return;
@@ -137,7 +110,7 @@ export class PollingOrchestratorService {
       const domainSource = this.pollingDomainRegistryService.resolve(
         session.target,
       );
-      const latestSnapshot = await domainSource.fetchSnapshot(session.target);
+      const latestSnapshot = await domainSource.fetch(session.target);
       const operations = this.diffPatchService.createPatch(
         session.lastSnapshot,
         latestSnapshot,
@@ -155,7 +128,7 @@ export class PollingOrchestratorService {
         return;
       }
 
-      this.emitPatch(client, {
+      await this.emitPatch(streamId, {
         sourceKey: updatedSession.sourceKey,
         target: updatedSession.target,
         version: updatedSession.version,
@@ -163,7 +136,7 @@ export class PollingOrchestratorService {
         operations,
       });
     } catch (error) {
-      this.emitError(client, {
+      await this.emitError(streamId, {
         sourceKey: session.sourceKey,
         target: session.target,
         phase: 'poll',
@@ -178,30 +151,24 @@ export class PollingOrchestratorService {
     }
   }
 
-  private emitSnapshot(
-    client: Socket,
-    envelope: PollingSnapshotEnvelope<JsonObject, string>,
-  ): void {
-    client.emit(DIFF_ENGINE_SOCKET_EVENTS.fullState, envelope);
-  }
-
   private emitPatch(
-    client: Socket,
+    streamId: string,
     envelope: PollingPatchEnvelope<string>,
-  ): void {
-    client.emit(DIFF_ENGINE_SOCKET_EVENTS.patch, envelope);
+  ): Promise<void> {
+    return this.pollingEventPublisherService.publish(streamId, {
+      kind: 'patch',
+      envelope,
+    });
   }
 
   private emitError(
-    client: Socket,
+    streamId: string,
     envelope: PollingStreamErrorEnvelope<string>,
-  ): void {
-    const eventName =
-      envelope.phase === 'connect'
-        ? DIFF_ENGINE_SOCKET_EVENTS.startError
-        : DIFF_ENGINE_SOCKET_EVENTS.pollingError;
-
-    client.emit(eventName, envelope);
+  ): Promise<void> {
+    return this.pollingEventPublisherService.publish(streamId, {
+      kind: 'error',
+      envelope,
+    });
   }
 
   private getErrorMessage(error: unknown, fallback: string): string {

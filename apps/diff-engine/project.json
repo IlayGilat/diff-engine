@@ -50,6 +50,7 @@
       "dependsOn": ["build"],
       "options": {
         "buildTarget": "diff-engine:build",
+        "inspect": false,
         "runBuildTargetDependencies": false
       },
       "configurations": {

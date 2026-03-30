@@ -3,7 +3,7 @@ import { JsonObject, RealtimeDomainClientEvent } from '@org/models';
 import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { Action } from '@ngrx/store';
 import { map, mergeMap, takeUntil, tap } from 'rxjs';
-import { SocketIoDomainStreamClientService } from '../socket/socket-io-domain-stream.client';
+import { GraphqlDomainStreamClientService } from '../socket/graphql-domain-stream.client';
 import {
   RealtimeDomainActionGroup,
   RealtimeDomainStoreBundle,
@@ -14,7 +14,7 @@ export abstract class AbstractRealtimeDomainEffects<
   TSnapshot extends JsonObject,
 > {
   protected readonly actions$ = inject(Actions);
-  protected readonly socketClient = inject(SocketIoDomainStreamClientService);
+  protected readonly socketClient = inject(GraphqlDomainStreamClientService);
 
   protected createConnectEffect(
     storeBundle: RealtimeDomainStoreBundle<TDomain, TSnapshot>,
@@ -30,7 +30,7 @@ export abstract class AbstractRealtimeDomainEffects<
             })
             .pipe(
               map((event) =>
-                this.mapSocketEventToAction(storeBundle.actions, event),
+                this.mapRealtimeEventToAction(storeBundle.actions, event),
               ),
               takeUntil(
                 this.actions$.pipe(ofType(storeBundle.actions.disconnectRequested)),
@@ -56,7 +56,7 @@ export abstract class AbstractRealtimeDomainEffects<
     );
   }
 
-  private mapSocketEventToAction(
+  private mapRealtimeEventToAction(
     actions: RealtimeDomainActionGroup<TDomain, TSnapshot>,
     event: RealtimeDomainClientEvent<TSnapshot, TDomain>,
   ): Action {
@@ -87,6 +87,6 @@ export abstract class AbstractRealtimeDomainEffects<
         }) as Action;
     }
 
-    throw new Error('Unsupported socket event kind.');
+    throw new Error('Unsupported realtime event kind.');
   }
 }

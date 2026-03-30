@@ -17,7 +17,7 @@ export abstract class AbstractPollingDomainSource<
     return this.definition.pollIntervalMs;
   }
 
-  abstract fetchSnapshot(
+  abstract fetch(
     target: PollingSubscriptionTarget<TDomain>,
   ): Promise<TSnapshot>;
 }

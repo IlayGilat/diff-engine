@@ -1,6 +1,6 @@
-export function buildSocketDomainSessionKey(
-  socketId: string,
+export function buildStreamDomainSessionKey(
+  streamId: string,
   domain: string,
 ): string {
-  return socketId + '::' + domain;
+  return streamId + '::' + domain;
 }
