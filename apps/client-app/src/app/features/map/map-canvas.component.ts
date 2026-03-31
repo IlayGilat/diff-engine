@@ -10,7 +10,6 @@ import {
   ViewChild,
 } from '@angular/core';
 import {
-  DEMO_MAP_GRATICULE_STEP,
   DEMO_MAP_WORLD_BOUNDS,
   GeoPoint,
   HotspotsLayerSnapshot,
@@ -92,13 +91,11 @@ import * as L from 'leaflet';
         background: #c2410c;
       }
       .map-host {
-        min-height: 540px;
+        min-height: 780px;
         border-radius: 24px;
         overflow: hidden;
         border: 1px solid #dbe3ef;
-        background:
-          radial-gradient(circle at top right, rgb(255 255 255 / 0.38), transparent 26%),
-          linear-gradient(180deg, #c9deef 0%, #b4d3ea 100%);
+        background: #dbeafe;
       }
       :host ::ng-deep .map-label {
         background: rgb(15 23 42 / 0.86);
@@ -114,7 +111,7 @@ import * as L from 'leaflet';
           flex-direction: column;
         }
         .map-host {
-          min-height: 420px;
+          min-height: 520px;
         }
       }
     `,
@@ -128,7 +125,6 @@ export class MapCanvasComponent
   @ViewChild('mapHost', { static: true }) private readonly mapHost?: ElementRef<HTMLDivElement>;
 
   private map: L.Map | null = null;
-  private readonly backdropLayer = L.layerGroup();
   private readonly regionsLayer = L.layerGroup();
   private readonly hotspotsLayer = L.layerGroup();
 
@@ -147,23 +143,25 @@ export class MapCanvasComponent
     );
 
     this.map = L.map(this.mapHost.nativeElement, {
-      attributionControl: false,
+      attributionControl: true,
       zoomControl: true,
-      minZoom: 7,
-      maxZoom: 11,
+      minZoom: 6,
+      maxZoom: 18,
       zoomSnap: 0.25,
-      maxBounds: L.latLngBounds(southWest, northEast).pad(0.08),
     });
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors',
+      maxZoom: 19,
+    }).addTo(this.map);
 
     this.map.fitBounds(L.latLngBounds(southWest, northEast), {
-      padding: [28, 28],
+      padding: [40, 40],
     });
 
-    this.backdropLayer.addTo(this.map);
     this.regionsLayer.addTo(this.map);
     this.hotspotsLayer.addTo(this.map);
 
-    this.renderBackdrop();
     this.renderLayers();
 
     queueMicrotask(() => {
@@ -183,61 +181,6 @@ export class MapCanvasComponent
   ngOnDestroy(): void {
     this.map?.remove();
     this.map = null;
-  }
-
-  private renderBackdrop(): void {
-    this.backdropLayer.clearLayers();
-
-    const { minX, minY, maxX, maxY } = DEMO_MAP_WORLD_BOUNDS;
-
-    L.rectangle(
-      [
-        [minY, minX],
-        [maxY, maxX],
-      ],
-      {
-        color: '#4f6f87',
-        weight: 1.5,
-        fillColor: '#eef4e6',
-        fillOpacity: 0.9,
-      },
-    ).addTo(this.backdropLayer);
-
-    for (
-      let longitude = minX + DEMO_MAP_GRATICULE_STEP;
-      longitude < maxX;
-      longitude += DEMO_MAP_GRATICULE_STEP
-    ) {
-      L.polyline(
-        [
-          [minY, longitude],
-          [maxY, longitude],
-        ],
-        {
-          color: '#8cb0c9',
-          weight: 1,
-          dashArray: '3 7',
-        },
-      ).addTo(this.backdropLayer);
-    }
-
-    for (
-      let latitude = minY + DEMO_MAP_GRATICULE_STEP;
-      latitude < maxY;
-      latitude += DEMO_MAP_GRATICULE_STEP
-    ) {
-      L.polyline(
-        [
-          [latitude, minX],
-          [latitude, maxX],
-        ],
-        {
-          color: '#8cb0c9',
-          weight: 1,
-          dashArray: '3 7',
-        },
-      ).addTo(this.backdropLayer);
-    }
   }
 
   private renderLayers(): void {
