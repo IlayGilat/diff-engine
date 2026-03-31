@@ -21,7 +21,7 @@ describe('App', () => {
     await fixture.whenStable();
     const compiled = fixture.nativeElement as HTMLElement;
     expect(compiled.querySelector('h1')?.textContent).toContain(
-      'Visual diff streaming for separate domain stores',
+      'Realtime map layers with explicit NgRx domains',
     );
   });
 });

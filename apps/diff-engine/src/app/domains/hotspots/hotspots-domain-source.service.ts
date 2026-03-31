@@ -1,31 +1,35 @@
+import {
+  HotspotsLayerSnapshot,
+  JsonObject,
+  PollingSubscriptionTarget,
+} from '@org/models';
 import { Injectable } from '@nestjs/common';
-import { JsonObject, OverviewSnapshot, PollingSubscriptionTarget } from '@org/models';
 import { AbstractPollingDomainSource } from '../../core/polling/polling-domain-source.abstract';
 
 @Injectable()
-export class OverviewDomainSourceService extends AbstractPollingDomainSource<
-  'overview',
-  OverviewSnapshot
+export class HotspotsDomainSourceService extends AbstractPollingDomainSource<
+  'hotspots',
+  HotspotsLayerSnapshot
 > {
   readonly definition = {
-    domain: 'overview' as const,
-    pollIntervalMs: Number(process.env.OVERVIEW_POLL_INTERVAL_MS ?? 2000),
+    domain: 'hotspots' as const,
+    pollIntervalMs: Number(process.env.HOTSPOTS_POLL_INTERVAL_MS ?? 1500),
   };
 
   private readonly baseUrl =
     process.env.MOCK_EXTERNAL_API_URL ?? 'http://localhost:3334';
 
   async fetch(
-    target: PollingSubscriptionTarget<'overview'>,
-  ): Promise<OverviewSnapshot> {
-    return this.fetchJson<OverviewSnapshot>('/data/overview', target, {
-      'x-parli-domain': 'overview',
+    target: PollingSubscriptionTarget<'hotspots'>,
+  ): Promise<HotspotsLayerSnapshot> {
+    return this.fetchJson<HotspotsLayerSnapshot>('/data/hotspots', target, {
+      'x-parli-domain': 'hotspots',
     });
   }
 
   private async fetchJson<TSnapshot extends JsonObject>(
     path: string,
-    target: PollingSubscriptionTarget<'overview'>,
+    target: PollingSubscriptionTarget<'hotspots'>,
     headers: Record<string, string> = {},
   ): Promise<TSnapshot> {
     const params = new URLSearchParams({

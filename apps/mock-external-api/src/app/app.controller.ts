@@ -5,7 +5,7 @@ import {
   Param,
   Query,
 } from '@nestjs/common';
-import { isDemoPollingDomain } from '@org/models';
+import { isDemoMapLayerDomain } from '@org/models';
 import { MockDataService } from './mock-data.service';
 
 @Controller()
@@ -19,9 +19,9 @@ export class AppController {
       throw new BadRequestException('Query parameter "email" is required.');
     }
 
-    if (!domain || !isDemoPollingDomain(domain)) {
+    if (!domain || !isDemoMapLayerDomain(domain)) {
       throw new BadRequestException(
-        'Route parameter "domain" must be one of: overview, activity.',
+        'Route parameter "domain" must be one of: regions, hotspots.',
       );
     }
 

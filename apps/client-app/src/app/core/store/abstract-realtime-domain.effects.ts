@@ -4,10 +4,7 @@ import { Actions, createEffect, ofType } from '@ngrx/effects';
 import { Action } from '@ngrx/store';
 import { map, mergeMap, takeUntil, tap } from 'rxjs';
 import { GraphqlDomainStreamClientService } from '../socket/graphql-domain-stream.client';
-import {
-  RealtimeDomainActionGroup,
-  RealtimeDomainStoreBundle,
-} from './realtime-domain-store.factory';
+import { RealtimeDomainActionGroup } from './realtime-domain-actions.factory';
 
 export abstract class AbstractRealtimeDomainEffects<
   TDomain extends string,
@@ -17,23 +14,22 @@ export abstract class AbstractRealtimeDomainEffects<
   protected readonly socketClient = inject(GraphqlDomainStreamClientService);
 
   protected createConnectEffect(
-    storeBundle: RealtimeDomainStoreBundle<TDomain, TSnapshot>,
+    domain: TDomain,
+    actions: RealtimeDomainActionGroup<TDomain, TSnapshot>,
   ) {
     return createEffect(() =>
       this.actions$.pipe(
-        ofType(storeBundle.actions.connectRequested),
+        ofType(actions.connectRequested),
         mergeMap((action: { email: string }) =>
           this.socketClient
             .connect<TDomain, TSnapshot>({
-              domain: storeBundle.definition.domain,
+              domain,
               email: action.email,
             })
             .pipe(
-              map((event) =>
-                this.mapRealtimeEventToAction(storeBundle.actions, event),
-              ),
+              map((event) => this.mapRealtimeEventToAction(actions, event)),
               takeUntil(
-                this.actions$.pipe(ofType(storeBundle.actions.disconnectRequested)),
+                this.actions$.pipe(ofType(actions.disconnectRequested)),
               ),
             ),
         ),
@@ -42,14 +38,15 @@ export abstract class AbstractRealtimeDomainEffects<
   }
 
   protected createDisconnectEffect(
-    storeBundle: RealtimeDomainStoreBundle<TDomain, TSnapshot>,
+    domain: TDomain,
+    actions: RealtimeDomainActionGroup<TDomain, TSnapshot>,
   ) {
     return createEffect(
       () =>
         this.actions$.pipe(
-          ofType(storeBundle.actions.disconnectRequested),
+          ofType(actions.disconnectRequested),
           tap(() => {
-            this.socketClient.disconnect(storeBundle.definition.domain);
+            this.socketClient.disconnect(domain);
           }),
         ),
       { dispatch: false },

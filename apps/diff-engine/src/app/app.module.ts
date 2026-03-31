@@ -13,8 +13,8 @@ import { SnapshotSessionStoreService } from './core/polling/store/snapshot-sessi
 import { PollingEventPublisherService } from './core/realtime/polling-event-publisher.service';
 import { PollingGraphqlResolver } from './core/realtime/polling-graphql.resolver';
 import { POLLING_PUB_SUB } from './core/realtime/polling-pub-sub.constants';
-import { ActivityDomainSourceService } from './domains/activity/activity-domain-source.service';
-import { OverviewDomainSourceService } from './domains/overview/overview-domain-source.service';
+import { HotspotsDomainSourceService } from './domains/hotspots/hotspots-domain-source.service';
+import { RegionsDomainSourceService } from './domains/regions/regions-domain-source.service';
 
 @Module({
   imports: [
@@ -33,14 +33,14 @@ import { OverviewDomainSourceService } from './domains/overview/overview-domain-
       provide: POLLING_PUB_SUB,
       useValue: new PubSub(),
     },
-    ActivityDomainSourceService,
     DiffPatchService,
-    OverviewDomainSourceService,
+    HotspotsDomainSourceService,
     PollingDomainRegistryService,
     PollingEventPublisherService,
     PollingGraphqlResolver,
     PollingOrchestratorService,
     PollingRuntimeRegistryService,
+    RegionsDomainSourceService,
     InMemorySnapshotStoreAdapter,
     SnapshotStoreAdapterBuilder,
     SnapshotSessionStoreService,

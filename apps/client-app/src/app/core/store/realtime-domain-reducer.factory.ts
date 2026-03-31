@@ -3,174 +3,70 @@ import {
   PollingConnectionState,
   PollingPatchEnvelope,
   PollingSessionViewState,
-  PollingSnapshotEnvelope,
-  PollingStreamErrorEnvelope,
   PollingSubscriptionTarget,
   buildSourceKey,
 } from '@org/models';
 import {
-  ActionCreator,
   ActionReducer,
-  createAction,
+  MemoizedSelector,
   createFeatureSelector,
   createReducer,
   createSelector,
   on,
-  props,
 } from '@ngrx/store';
 import { applyPatch } from 'fast-json-patch';
+import { RealtimeDomainActionGroup } from './realtime-domain-actions.factory';
 import {
   DomainPatchLogEntry,
   RealtimeDomainDefinition,
   RealtimeDomainFeatureState,
 } from './realtime-domain-state.model';
 
-export interface RealtimeDomainActionGroup<
-  TDomain extends string,
-  TSnapshot extends JsonObject,
-> {
-  connectRequested: ActionCreator<string, (props: { email: string }) => { email: string } & { type: string }>;
-  disconnectRequested: ActionCreator<string, () => { type: string }>;
-  connected: ActionCreator<
-    string,
-    (props: {
-      sourceKey: string;
-      target: PollingSubscriptionTarget<TDomain>;
-      receivedAt: string;
-    }) => {
-      sourceKey: string;
-      target: PollingSubscriptionTarget<TDomain>;
-      receivedAt: string;
-    } & { type: string }
-  >;
-  disconnected: ActionCreator<
-    string,
-    (props: {
-      sourceKey: string;
-      target: PollingSubscriptionTarget<TDomain>;
-      receivedAt: string;
-    }) => {
-      sourceKey: string;
-      target: PollingSubscriptionTarget<TDomain>;
-      receivedAt: string;
-    } & { type: string }
-  >;
-  snapshotReceived: ActionCreator<
-    string,
-    (props: {
-      envelope: PollingSnapshotEnvelope<TSnapshot, TDomain>;
-    }) => {
-      envelope: PollingSnapshotEnvelope<TSnapshot, TDomain>;
-    } & { type: string }
-  >;
-  patchReceived: ActionCreator<
-    string,
-    (props: { envelope: PollingPatchEnvelope<TDomain> }) => {
-      envelope: PollingPatchEnvelope<TDomain>;
-    } & { type: string }
-  >;
-  streamErrorReceived: ActionCreator<
-    string,
-    (props: { envelope: PollingStreamErrorEnvelope<TDomain> }) => {
-      envelope: PollingStreamErrorEnvelope<TDomain>;
-    } & { type: string }
-  >;
-}
-
 export interface RealtimeDomainSelectors<
   TDomain extends string,
   TSnapshot extends JsonObject,
 > {
-  selectFeatureState: ReturnType<
-    typeof createFeatureSelector<RealtimeDomainFeatureState<TSnapshot, TDomain>>
+  selectFeatureState: MemoizedSelector<
+    object,
+    RealtimeDomainFeatureState<TSnapshot, TDomain>
   >;
-  selectSession: any;
-  selectSnapshot: any;
-  selectPatchLog: any;
+  selectSession: MemoizedSelector<
+    object,
+    PollingSessionViewState<TSnapshot, TDomain>
+  >;
+  selectSnapshot: MemoizedSelector<object, TSnapshot | null>;
+  selectPatchLog: MemoizedSelector<object, DomainPatchLogEntry[]>;
 }
 
-export interface RealtimeDomainStoreBundle<
-  TDomain extends string,
-  TSnapshot extends JsonObject,
-> {
-  definition: RealtimeDomainDefinition<TDomain, TSnapshot>;
-  actions: RealtimeDomainActionGroup<TDomain, TSnapshot>;
-  reducer: ActionReducer<RealtimeDomainFeatureState<TSnapshot, TDomain>>;
-  selectors: RealtimeDomainSelectors<TDomain, TSnapshot>;
-}
-
-export function createRealtimeDomainStore<
+export function createRealtimeDomainReducer<
   TDomain extends string,
   TSnapshot extends JsonObject,
 >(
   definition: RealtimeDomainDefinition<TDomain, TSnapshot>,
-): RealtimeDomainStoreBundle<TDomain, TSnapshot> {
-  const connectRequested = createAction(
-    '[' + definition.featureKey + '] Connect Requested',
-    props<{ email: string }>(),
-  );
-
-  const disconnectRequested = createAction(
-    '[' + definition.featureKey + '] Disconnect Requested',
-  );
-
-  const connected = createAction(
-    '[' + definition.featureKey + '] Connected',
-    props<{
-      sourceKey: string;
-      target: PollingSubscriptionTarget<TDomain>;
-      receivedAt: string;
-    }>(),
-  );
-
-  const disconnected = createAction(
-    '[' + definition.featureKey + '] Disconnected',
-    props<{
-      sourceKey: string;
-      target: PollingSubscriptionTarget<TDomain>;
-      receivedAt: string;
-    }>(),
-  );
-
-  const snapshotReceived = createAction(
-    '[' + definition.featureKey + '] Snapshot Received',
-    props<{ envelope: PollingSnapshotEnvelope<TSnapshot, TDomain> }>(),
-  );
-
-  const patchReceived = createAction(
-    '[' + definition.featureKey + '] Patch Received',
-    props<{ envelope: PollingPatchEnvelope<TDomain> }>(),
-  );
-
-  const streamErrorReceived = createAction(
-    '[' + definition.featureKey + '] Stream Error Received',
-    props<{ envelope: PollingStreamErrorEnvelope<TDomain> }>(),
-  );
-
-  const initialState = createInitialFeatureState(definition);
-
-  const reducer = createReducer(
-    initialState,
-    on(connectRequested, (state, { email }) => ({
+  actions: RealtimeDomainActionGroup<TDomain, TSnapshot>,
+): ActionReducer<RealtimeDomainFeatureState<TSnapshot, TDomain>> {
+  return createReducer(
+    createInitialFeatureState(definition),
+    on(actions.connectRequested, (state, { email }) => ({
       ...state,
       session: setConnectionState(
-        createSessionState(definition.domain, email),
+        createSessionState<TDomain, TSnapshot>(definition.domain, email),
         'connecting',
         state.session.lastReceivedAt,
       ),
     })),
-    on(connected, (state, { sourceKey, target, receivedAt }) => ({
+    on(actions.connected, (state, { sourceKey, target, receivedAt }) => ({
       ...state,
       session: {
         ...state.session,
         sourceKey,
         target,
-        connectionState: 'connected',
+        connectionState: 'connected' as PollingConnectionState,
         lastReceivedAt: receivedAt,
         errorMessage: null,
       },
     })),
-    on(disconnectRequested, (state) => ({
+    on(actions.disconnectRequested, (state) => ({
       ...state,
       session: setConnectionState(
         state.session,
@@ -178,17 +74,17 @@ export function createRealtimeDomainStore<
         state.session.lastReceivedAt,
       ),
     })),
-    on(disconnected, (state, { sourceKey, target, receivedAt }) => ({
+    on(actions.disconnected, (state, { sourceKey, target, receivedAt }) => ({
       ...state,
       session: {
         ...state.session,
         sourceKey,
         target,
-        connectionState: 'disconnected',
+        connectionState: 'disconnected' as PollingConnectionState,
         lastReceivedAt: receivedAt,
       },
     })),
-    on(snapshotReceived, (state, { envelope }) => ({
+    on(actions.snapshotReceived, (state, { envelope }) => ({
       ...state,
       session: {
         sourceKey: envelope.sourceKey,
@@ -197,7 +93,7 @@ export function createRealtimeDomainStore<
         version: envelope.version,
         lastReceivedAt: envelope.receivedAt,
         lastPatchOperationCount: 0,
-        connectionState: 'connected',
+        connectionState: 'connected' as PollingConnectionState,
         errorMessage: null,
       },
       patchLog: appendPatchLog(state.patchLog, {
@@ -209,7 +105,7 @@ export function createRealtimeDomainStore<
         paths: [],
       }),
     })),
-    on(patchReceived, (state, { envelope }) => ({
+    on(actions.patchReceived, (state, { envelope }) => ({
       ...state,
       session: applyPatchEnvelope(state.session, envelope),
       patchLog: appendPatchLog(state.patchLog, {
@@ -221,11 +117,11 @@ export function createRealtimeDomainStore<
         paths: envelope.operations.slice(0, 4).map((operation) => operation.path),
       }),
     })),
-    on(streamErrorReceived, (state, { envelope }) => ({
+    on(actions.streamErrorReceived, (state, { envelope }) => ({
       ...state,
       session: {
         ...state.session,
-        connectionState: 'error',
+        connectionState: 'error' as PollingConnectionState,
         lastReceivedAt: envelope.receivedAt,
         errorMessage: envelope.message,
       },
@@ -239,10 +135,17 @@ export function createRealtimeDomainStore<
       }),
     })),
   );
+}
 
+export function createRealtimeDomainSelectors<
+  TDomain extends string,
+  TSnapshot extends JsonObject,
+>(
+  featureKey: string,
+): RealtimeDomainSelectors<TDomain, TSnapshot> {
   const selectFeatureState =
     createFeatureSelector<RealtimeDomainFeatureState<TSnapshot, TDomain>>(
-      definition.featureKey,
+      featureKey,
     );
   const selectSession = createSelector(
     selectFeatureState,
@@ -258,23 +161,10 @@ export function createRealtimeDomainStore<
   );
 
   return {
-    definition,
-    actions: {
-      connectRequested,
-      disconnectRequested,
-      connected,
-      disconnected,
-      snapshotReceived,
-      patchReceived,
-      streamErrorReceived,
-    },
-    reducer,
-    selectors: {
-      selectFeatureState,
-      selectSession,
-      selectSnapshot,
-      selectPatchLog,
-    },
+    selectFeatureState,
+    selectSession,
+    selectSnapshot,
+    selectPatchLog,
   };
 }
 
@@ -365,9 +255,7 @@ function describeOperations<TDomain extends string>(
     {} as Record<string, number>,
   );
 
-  const parts = Object.keys(operationCounts).map((operationName) => {
-    return operationName + ': ' + operationCounts[operationName];
-  });
-
-  return parts.join(' | ');
+  return Object.keys(operationCounts)
+    .map((operationName) => operationName + ': ' + operationCounts[operationName])
+    .join(' | ');
 }
