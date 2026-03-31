@@ -6,6 +6,7 @@ import { AppController } from './app.controller';
 import { PollingDomainRegistryService } from './core/polling/polling-domain-registry.service';
 import { DiffPatchService } from './core/polling/diff-patch.service';
 import { PollingOrchestratorService } from './core/polling/polling-orchestrator.service';
+import { PollingStreamConnectionRegistryService } from './core/polling/polling-stream-connection-registry.service';
 import { PollingRuntimeRegistryService } from './core/polling/runtime/polling-runtime-registry.service';
 import { InMemorySnapshotStoreAdapter } from './core/polling/store/adapters/in-memory-snapshot-store.adapter';
 import { SnapshotStoreAdapterBuilder } from './core/polling/store/builders/snapshot-store-adapter.builder';
@@ -39,6 +40,7 @@ import { RegionsDomainSourceService } from './domains/regions/regions-domain-sou
     PollingEventPublisherService,
     PollingGraphqlResolver,
     PollingOrchestratorService,
+    PollingStreamConnectionRegistryService,
     PollingRuntimeRegistryService,
     RegionsDomainSourceService,
     InMemorySnapshotStoreAdapter,

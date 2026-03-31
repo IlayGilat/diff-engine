@@ -30,7 +30,7 @@ function createSnapshot(): HotspotsLayerSnapshot {
 }
 
 describe('hotspotsLayerReducer', () => {
-  it('should handle connect, snapshot, patch, and disconnect events', () => {
+  it('should preserve the snapshot while reconnecting and still disconnect manually', () => {
     const target = {
       domain: 'hotspots' as const,
       email: 'demo@example.com',
@@ -75,6 +75,17 @@ describe('hotspotsLayerReducer', () => {
         },
       }),
     );
+    expect(state.session.snapshot?.features[0]?.radius).toBe(18);
+
+    state = hotspotsLayerReducer(
+      state,
+      hotspotsLayerActions.reconnecting({
+        sourceKey: buildSourceKey(target),
+        target,
+        receivedAt: '2026-01-01T00:00:02.500Z',
+      }),
+    );
+    expect(state.session.connectionState).toBe('connecting');
     expect(state.session.snapshot?.features[0]?.radius).toBe(18);
 
     state = hotspotsLayerReducer(

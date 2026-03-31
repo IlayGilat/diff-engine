@@ -32,7 +32,7 @@ function createSnapshot(): RegionsLayerSnapshot {
 }
 
 describe('regionsLayerReducer', () => {
-  it('should handle connect, snapshot, patch, and error events', () => {
+  it('should handle connect, reconnect, snapshot, patch, and error events', () => {
     const connectedAt = '2026-01-01T00:00:01.000Z';
     const target = {
       domain: 'regions' as const,
@@ -69,6 +69,27 @@ describe('regionsLayerReducer', () => {
       }),
     );
     expect(state.session.snapshot?.features.length).toBe(1);
+
+    state = regionsLayerReducer(
+      state,
+      regionsLayerActions.reconnecting({
+        sourceKey: buildSourceKey(target),
+        target,
+        receivedAt: '2026-01-01T00:00:01.500Z',
+      }),
+    );
+    expect(state.session.connectionState).toBe('connecting');
+    expect(state.session.snapshot?.features.length).toBe(1);
+
+    state = regionsLayerReducer(
+      state,
+      regionsLayerActions.connected({
+        sourceKey: buildSourceKey(target),
+        target,
+        receivedAt: '2026-01-01T00:00:01.800Z',
+      }),
+    );
+    expect(state.session.connectionState).toBe('connected');
 
     state = regionsLayerReducer(
       state,

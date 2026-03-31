@@ -16,6 +16,18 @@ export interface RealtimeDomainActionGroup<
     (props: { email: string }) => { email: string } & { type: string }
   >;
   disconnectRequested: ActionCreator<string, () => { type: string }>;
+  reconnecting: ActionCreator<
+    string,
+    (props: {
+      sourceKey: string;
+      target: PollingSubscriptionTarget<TDomain>;
+      receivedAt: string;
+    }) => {
+      sourceKey: string;
+      target: PollingSubscriptionTarget<TDomain>;
+      receivedAt: string;
+    } & { type: string }
+  >;
   connected: ActionCreator<
     string,
     (props: {
@@ -73,6 +85,14 @@ export function createRealtimeDomainActions<
     ),
     disconnectRequested: createAction(
       '[' + featureKey + '] Disconnect Requested',
+    ),
+    reconnecting: createAction(
+      '[' + featureKey + '] Reconnecting',
+      props<{
+        sourceKey: string;
+        target: PollingSubscriptionTarget<TDomain>;
+        receivedAt: string;
+      }>(),
     ),
     connected: createAction(
       '[' + featureKey + '] Connected',

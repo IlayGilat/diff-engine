@@ -55,6 +55,17 @@ export function createRealtimeDomainReducer<
         state.session.lastReceivedAt,
       ),
     })),
+    on(actions.reconnecting, (state, { sourceKey, target, receivedAt }) => ({
+      ...state,
+      session: {
+        ...state.session,
+        sourceKey,
+        target,
+        connectionState: 'connecting' as PollingConnectionState,
+        lastReceivedAt: receivedAt,
+        errorMessage: null,
+      },
+    })),
     on(actions.connected, (state, { sourceKey, target, receivedAt }) => ({
       ...state,
       session: {

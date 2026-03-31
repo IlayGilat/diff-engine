@@ -58,6 +58,12 @@ export abstract class AbstractRealtimeDomainEffects<
     event: RealtimeDomainClientEvent<TSnapshot, TDomain>,
   ): Action {
     switch (event.kind) {
+      case 'reconnecting':
+        return actions.reconnecting({
+          sourceKey: event.sourceKey,
+          target: event.target,
+          receivedAt: event.receivedAt,
+        }) as Action;
       case 'connected':
         return actions.connected({
           sourceKey: event.sourceKey,

@@ -17,6 +17,7 @@ import { AbstractDomainStreamClient } from './domain-stream-client.base';
 interface ActiveRealtimeStream {
   streamId: string;
   target: PollingSubscriptionTarget<string>;
+  isRecovering: boolean;
   unsubscribe?: () => void;
 }
 
@@ -54,6 +55,7 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
     const stream: ActiveRealtimeStream = {
       streamId: this.createStreamId(normalizedTarget),
       target: normalizedTarget,
+      isRecovering: false,
     };
 
     this.activeTargets.set(normalizedTarget.domain, stream);
@@ -90,9 +92,20 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
     this.graphqlWsClient = createClient({
       url: this.realtimeClientConfigService.diffEngineWsUrl,
       on: {
+        connected: () => {
+          this.activeTargets.forEach((stream) => {
+            if (!stream.isRecovering) {
+              return;
+            }
+
+            stream.isRecovering = false;
+            void this.startDomain(stream);
+          });
+        },
         closed: () => {
           this.activeTargets.forEach((stream) => {
-            this.emitDomainDisconnected(stream.target);
+            stream.isRecovering = true;
+            this.emitDomainReconnecting(stream.target);
           });
         },
       },
@@ -132,7 +145,7 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
           this.emitClientError(stream.target, this.getGraphqlWsErrorMessage(error));
         },
         complete: () => {
-          if (this.activeTargets.has(stream.target.domain)) {
+          if (this.activeTargets.has(stream.target.domain) && !stream.isRecovering) {
             this.emitDomainDisconnected(stream.target);
           }
         },
@@ -209,6 +222,17 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
   ): void {
     this.eventStream.next({
       kind: 'disconnected',
+      sourceKey: buildSourceKey(target),
+      target,
+      receivedAt: new Date().toISOString(),
+    });
+  }
+
+  private emitDomainReconnecting(
+    target: PollingSubscriptionTarget<string>,
+  ): void {
+    this.eventStream.next({
+      kind: 'reconnecting',
       sourceKey: buildSourceKey(target),
       target,
       receivedAt: new Date().toISOString(),

@@ -70,6 +70,12 @@ export type RealtimeDomainClientEvent<
       receivedAt: string;
     }
   | {
+      kind: 'reconnecting';
+      sourceKey: string;
+      target: PollingSubscriptionTarget<TDomain>;
+      receivedAt: string;
+    }
+  | {
       kind: 'disconnected';
       sourceKey: string;
       target: PollingSubscriptionTarget<TDomain>;

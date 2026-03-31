@@ -3,6 +3,11 @@ import { JsonObject, PollingSubscriptionTarget } from '@org/models';
 import { HotspotsDomainSourceService } from '../../domains/hotspots/hotspots-domain-source.service';
 import { RegionsDomainSourceService } from '../../domains/regions/regions-domain-source.service';
 import { AbstractPollingDomainSource } from './polling-domain-source.abstract';
+import {
+  PollingOperationResult,
+  pollingFail,
+  pollingOk,
+} from './polling-operation-result.model';
 
 @Injectable()
 export class PollingDomainRegistryService {
@@ -20,12 +25,23 @@ export class PollingDomainRegistryService {
 
   resolve<TDomain extends string>(
     target: PollingSubscriptionTarget<TDomain>,
-  ): AbstractPollingDomainSource<TDomain, JsonObject> {
+  ): PollingOperationResult<AbstractPollingDomainSource<TDomain, JsonObject>> {
     const source = this.sources.find((candidate) => candidate.supports(target));
     if (!source) {
-      throw new Error('Unsupported polling domain "' + target.domain + '".');
+      return pollingFail(
+        'UNSUPPORTED_DOMAIN',
+        'Unsupported polling domain "' + target.domain + '".',
+        {
+          domain: target.domain,
+        },
+      );
     }
 
-    return source as AbstractPollingDomainSource<TDomain, JsonObject>;
+    return pollingOk(
+      source as AbstractPollingDomainSource<TDomain, JsonObject>,
+      {
+        domain: target.domain,
+      },
+    );
   }
 }
