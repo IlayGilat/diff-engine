@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "license": "MIT",
   "scripts": {
-    "start:all": "sh -c 'npm exec -- nx run mock-external-api:serve --outputStyle=stream-without-prefixes & npm exec -- nx run diff-engine:serve --outputStyle=stream-without-prefixes & npm exec -- nx run client-app:serve --outputStyle=stream-without-prefixes & wait'"
+    "start:all": "npm exec -- nx run-many -t serve -p mock-external-api,diff-engine,client-app --parallel=3 --outputStyle=stream"
   },
   "private": true,
   "dependencies": {

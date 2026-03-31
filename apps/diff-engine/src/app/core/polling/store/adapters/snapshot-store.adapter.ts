@@ -1,5 +1,5 @@
 import { JsonObject } from '@org/models';
-import { SnapshotSessionRecord } from '../snapshot-session-record.model';
+import { SnapshotSessionRecord } from '../models/snapshot-session-record.model';
 
 export interface SnapshotStoreAdapter {
   set<TSnapshot extends JsonObject>(
