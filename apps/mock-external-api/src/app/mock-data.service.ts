@@ -1,40 +1,41 @@
 import { Injectable } from '@nestjs/common';
 import {
-  ActivityChannelSnapshot,
-  ActivityEventSnapshot,
-  ActivitySnapshot,
-  ActivityWorkerSnapshot,
-  DemoPollingDomain,
-  OverviewHighlight,
-  OverviewMetricCard,
-  OverviewQueueSnapshot,
-  OverviewRegionSnapshot,
-  OverviewSnapshot,
+  DEMO_MAP_WORLD_BOUNDS,
+  DemoMapLayerDomain,
+  GeoCircleFeature,
+  GeoFeatureStatus,
+  GeoPoint,
+  GeoPolygonFeature,
+  HotspotsLayerSnapshot,
+  RegionsLayerSnapshot,
 } from '@org/models';
 
-interface EmailDomainState {
+interface EmailLayerState {
   requestCount: number;
-  overview: OverviewSnapshot;
-  activity: ActivitySnapshot;
+  regions: RegionsLayerSnapshot;
+  hotspots: HotspotsLayerSnapshot;
 }
 
 @Injectable()
 export class MockDataService {
-  private readonly states = new Map<string, EmailDomainState>();
+  private readonly states = new Map<string, EmailLayerState>();
 
-  getData(email: string, domain: DemoPollingDomain): OverviewSnapshot | ActivitySnapshot {
+  getData(
+    email: string,
+    domain: DemoMapLayerDomain,
+  ): RegionsLayerSnapshot | HotspotsLayerSnapshot {
     const state = this.getOrCreateState(email);
     state.requestCount += 1;
 
-    this.mutateOverview(state.overview, state.requestCount);
-    this.mutateActivity(state.activity, state.requestCount);
+    this.mutateRegions(state.regions, state.requestCount);
+    this.mutateHotspots(state.hotspots, state.requestCount);
 
-    return domain === 'overview'
-      ? structuredClone(state.overview)
-      : structuredClone(state.activity);
+    return domain === 'regions'
+      ? structuredClone(state.regions)
+      : structuredClone(state.hotspots);
   }
 
-  private getOrCreateState(email: string): EmailDomainState {
+  private getOrCreateState(email: string): EmailLayerState {
     const existingState = this.states.get(email);
     if (existingState) {
       return existingState;
@@ -45,397 +46,171 @@ export class MockDataService {
     return createdState;
   }
 
-  private createState(email: string): EmailDomainState {
+  private createState(email: string): EmailLayerState {
     const seededRandom = this.createSeededRandom(email);
+    const now = new Date().toISOString();
 
     return {
       requestCount: 0,
-      overview: {
+      regions: {
         meta: {
           ownerEmail: email,
-          domain: 'overview',
-          generatedAt: new Date().toISOString(),
-          lastUpdated: new Date().toISOString(),
+          domain: 'regions',
+          generatedAt: now,
+          lastUpdated: now,
           requestCount: 0,
         },
-        summary: {
-          liveUsers: 850 + Math.floor(seededRandom() * 200),
-          throughputPerMinute: 2200 + Math.floor(seededRandom() * 500),
-          errorRate: 0.8 + Number((seededRandom() * 1.7).toFixed(2)),
-          revenueImpact: 12000 + Math.floor(seededRandom() * 3500),
-        },
-        metrics: Array.from({ length: 4 }, (_, index) =>
-          this.createMetricCard(index, seededRandom),
-        ),
-        queues: Array.from({ length: 4 }, (_, index) =>
-          this.createQueueSnapshot(index, seededRandom),
-        ),
-        regions: Array.from({ length: 4 }, (_, index) =>
-          this.createRegionSnapshot(index, seededRandom),
-        ),
-        highlights: Array.from({ length: 3 }, (_, index) =>
-          this.createHighlight(index, seededRandom),
+        features: Array.from({ length: 5 }, (_, index) =>
+          this.createPolygonFeature(index + 1, seededRandom),
         ),
       },
-      activity: {
+      hotspots: {
         meta: {
           ownerEmail: email,
-          domain: 'activity',
-          generatedAt: new Date().toISOString(),
-          lastUpdated: new Date().toISOString(),
+          domain: 'hotspots',
+          generatedAt: now,
+          lastUpdated: now,
           requestCount: 0,
         },
-        stream: {
-          eventsPerMinute: 160 + Math.floor(seededRandom() * 40),
-          activeWorkers: 12 + Math.floor(seededRandom() * 6),
-          patchBurst: 0,
-          averageResponseMs: 140 + Math.floor(seededRandom() * 70),
-        },
-        workers: Array.from({ length: 6 }, (_, index) =>
-          this.createWorkerSnapshot(index, seededRandom),
-        ),
-        channels: Array.from({ length: 4 }, (_, index) =>
-          this.createChannelSnapshot(index, seededRandom),
-        ),
-        events: Array.from({ length: 10 }, (_, index) =>
-          this.createEventSnapshot(index + 1, seededRandom),
+        features: Array.from({ length: 8 }, (_, index) =>
+          this.createCircleFeature(index + 1, seededRandom),
         ),
       },
     };
   }
 
-  private mutateOverview(snapshot: OverviewSnapshot, requestCount: number): void {
+  private mutateRegions(snapshot: RegionsLayerSnapshot, requestCount: number): void {
     const now = new Date().toISOString();
     snapshot.meta.lastUpdated = now;
     snapshot.meta.requestCount = requestCount;
 
-    snapshot.summary.liveUsers += this.randomBetween(-12, 16);
-    snapshot.summary.throughputPerMinute += this.randomBetween(-60, 75);
-    snapshot.summary.errorRate = this.clampNumber(
-      Number(
-        (snapshot.summary.errorRate + this.randomBetween(-12, 18) / 100).toFixed(
-          2,
-        ),
-      ),
-      0.2,
-      5,
-    );
-    snapshot.summary.revenueImpact += this.randomBetween(-220, 310);
-
-    snapshot.metrics = snapshot.metrics.map((metric) => {
-      const nextValue = metric.value + this.randomBetween(-14, 18);
-      const nextDelta = this.randomBetween(-8, 11);
-
-      return {
-        ...metric,
-        value: Math.max(1, nextValue),
-        delta: nextDelta,
-        direction: nextDelta >= 0 ? 'up' : 'down',
-      };
-    });
-
-    snapshot.queues = snapshot.queues.map((queue) => {
-      const loadPercent = this.clampNumber(
-        queue.loadPercent + this.randomBetween(-10, 14),
-        15,
-        99,
+    snapshot.features = snapshot.features.map((feature) => {
+      const nextIntensity = this.clampNumber(
+        feature.intensity + this.randomBetween(-12, 18),
+        18,
+        100,
       );
 
       return {
-        ...queue,
-        backlog: Math.max(0, queue.backlog + this.randomBetween(-20, 24)),
-        loadPercent,
-        status: this.resolveQueueStatus(loadPercent),
+        ...feature,
+        intensity: nextIntensity,
+        status: this.resolveStatus(nextIntensity),
+        fill: this.resolvePolygonFill(nextIntensity),
+        stroke: this.resolvePolygonStroke(nextIntensity),
+        points: feature.points.map((point) => ({
+          x: this.clampNumber(point.x + this.randomBetween(-3, 3), 4, 96),
+          y: this.clampNumber(point.y + this.randomBetween(-3, 3), 4, 96),
+        })),
       };
     });
 
-    snapshot.regions = snapshot.regions.map((region) => ({
-      ...region,
-      traffic: Math.max(50, region.traffic + this.randomBetween(-30, 35)),
-      latencyMs: this.clampNumber(
-        region.latencyMs + this.randomBetween(-18, 21),
-        70,
-        340,
-      ),
-      errorRate: this.clampNumber(
-        Number((region.errorRate + this.randomBetween(-10, 15) / 100).toFixed(2)),
-        0.1,
-        4.5,
-      ),
-    }));
-
-    const strongestQueue = snapshot.queues
-      .slice()
-      .sort((left, right) => right.loadPercent - left.loadPercent)[0];
-
-    snapshot.highlights = [
-      {
-        headline: strongestQueue.label + ' demand spike',
-        detail:
-          'Queue pressure moved to ' +
-          strongestQueue.loadPercent +
-          '% with backlog ' +
-          strongestQueue.backlog +
-          '.',
-        tone:
-          strongestQueue.status === 'critical'
-            ? 'critical'
-            : strongestQueue.status === 'warning'
-              ? 'warning'
-              : 'good',
-      },
-      {
-        headline: 'Live user movement',
-        detail:
-          'Active users shifted to ' + snapshot.summary.liveUsers + ' users.',
-        tone: snapshot.summary.liveUsers > 950 ? 'good' : 'warning',
-      },
-      {
-        headline: 'Revenue forecast',
-        detail:
-          'Projected revenue impact now ' +
-          snapshot.summary.revenueImpact +
-          ' USD for the current window.',
-        tone: snapshot.summary.revenueImpact > 13000 ? 'good' : 'warning',
-      },
-    ];
-
-    if (requestCount % 3 === 0) {
-      snapshot.highlights.push({
-        headline: 'Burst window opened',
-        detail: 'A temporary highlight was injected to exercise add/remove patches.',
-        tone: 'warning',
-      });
+    if (requestCount % 3 === 0 && snapshot.features.length < 7) {
+      snapshot.features.push(
+        this.createPolygonFeature(100 + requestCount, this.createSeededRandom(snapshot.meta.ownerEmail + '-regions-' + requestCount)),
+      );
     }
 
-    if (requestCount % 5 === 0 && snapshot.highlights.length > 2) {
-      snapshot.highlights.pop();
+    if (requestCount % 5 === 0 && snapshot.features.length > 4) {
+      snapshot.features.pop();
     }
   }
 
-  private mutateActivity(snapshot: ActivitySnapshot, requestCount: number): void {
+  private mutateHotspots(snapshot: HotspotsLayerSnapshot, requestCount: number): void {
     const now = new Date().toISOString();
     snapshot.meta.lastUpdated = now;
     snapshot.meta.requestCount = requestCount;
 
-    snapshot.stream.eventsPerMinute = Math.max(
-      60,
-      snapshot.stream.eventsPerMinute + this.randomBetween(-12, 17),
-    );
-    snapshot.stream.activeWorkers = this.clampNumber(
-      snapshot.stream.activeWorkers + this.randomBetween(-1, 2),
-      6,
-      18,
-    );
-    snapshot.stream.patchBurst = this.randomBetween(2, 9);
-    snapshot.stream.averageResponseMs = this.clampNumber(
-      snapshot.stream.averageResponseMs + this.randomBetween(-15, 20),
-      70,
-      280,
-    );
+    snapshot.features = snapshot.features.map((feature) => {
+      const nextIntensity = this.clampNumber(
+        feature.intensity + this.randomBetween(-14, 20),
+        12,
+        100,
+      );
 
-    snapshot.workers = snapshot.workers.map((worker) => ({
-      ...worker,
-      online: Math.random() > 0.08,
-      utilization: this.clampNumber(
-        worker.utilization + this.randomBetween(-16, 20),
-        10,
-        98,
-      ),
-      tasksInFlight: Math.max(
-        0,
-        worker.tasksInFlight + this.randomBetween(-3, 5),
-      ),
-    }));
+      return {
+        ...feature,
+        intensity: nextIntensity,
+        radius: this.clampNumber(feature.radius + this.randomBetween(-3, 4), 6, 22),
+        status: this.resolveStatus(nextIntensity),
+        color: this.resolveCircleColor(nextIntensity),
+        center: {
+          x: this.clampNumber(feature.center.x + this.randomBetween(-4, 4), 4, 96),
+          y: this.clampNumber(feature.center.y + this.randomBetween(-4, 4), 4, 96),
+        },
+      };
+    });
 
-    snapshot.channels = snapshot.channels.map((channel) => ({
-      ...channel,
-      ratePerMinute: Math.max(
-        20,
-        channel.ratePerMinute + this.randomBetween(-10, 14),
-      ),
-      successRate: this.clampNumber(
-        Number((channel.successRate + this.randomBetween(-5, 6) / 100).toFixed(2)),
-        0.72,
-        0.99,
-      ),
-      backlog: Math.max(0, channel.backlog + this.randomBetween(-8, 10)),
-    }));
-
-    if (requestCount % 2 === 0) {
-      snapshot.events.push(
-        this.createLiveEventSnapshot(requestCount, snapshot.channels),
+    if (requestCount % 3 === 0 && snapshot.features.length < 12) {
+      snapshot.features.push(
+        this.createCircleFeature(200 + requestCount, this.createSeededRandom(snapshot.meta.ownerEmail + '-hotspots-' + requestCount)),
       );
     }
 
-    if (requestCount % 3 === 0 && snapshot.events.length > 6) {
-      snapshot.events.pop();
-    }
-
-    if (snapshot.events.length < 6) {
-      snapshot.events.push(
-        this.createLiveEventSnapshot(requestCount + 1000, snapshot.channels),
-      );
+    if (requestCount % 5 === 0 && snapshot.features.length > 6) {
+      snapshot.features.pop();
     }
   }
 
-  private createMetricCard(
+  private createPolygonFeature(
     index: number,
     seededRandom: () => number,
-  ): OverviewMetricCard {
-    const definitions = [
-      { id: 'conversion', label: 'Conversion', unit: '%' },
-      { id: 'retention', label: 'Retention', unit: '%' },
-      { id: 'latency', label: 'Latency', unit: 'ms' },
-      { id: 'sla', label: 'SLA', unit: '%' },
+  ): GeoPolygonFeature {
+    const labels = [
+      'North Field',
+      'Central Basin',
+      'River Belt',
+      'Southern Arc',
+      'Harbor Reach',
+      'Glass Ridge',
+      'Outer Shelf',
     ];
-
-    const definition = definitions[index];
-    const delta = this.randomSeededDelta(seededRandom);
+    const jitter = (min: number, max: number) =>
+      min + Math.floor(seededRandom() * (max - min + 1));
+    const baseX = 12 + ((index - 1) % 3) * 28 + Math.floor(seededRandom() * 5);
+    const baseY = 12 + Math.floor((index - 1) / 3) * 32 + Math.floor(seededRandom() * 5);
+    const width = 14 + Math.floor(seededRandom() * 8);
+    const height = 12 + Math.floor(seededRandom() * 8);
+    const intensity = 28 + Math.floor(seededRandom() * 58);
 
     return {
-      id: definition.id,
-      label: definition.label,
-      value: 40 + Math.floor(seededRandom() * 120),
-      unit: definition.unit,
-      delta,
-      direction: delta >= 0 ? 'up' : 'down',
+      id: 'region-' + index,
+      label: labels[(index - 1) % labels.length],
+      status: this.resolveStatus(intensity),
+      fill: this.resolvePolygonFill(intensity),
+      stroke: this.resolvePolygonStroke(intensity),
+      intensity,
+      points: [
+        this.clampPoint({ x: baseX, y: baseY }),
+        this.clampPoint({ x: baseX + width, y: baseY + jitter(-2, 2) }),
+        this.clampPoint({
+          x: baseX + width - jitter(1, 5),
+          y: baseY + height,
+        }),
+        this.clampPoint({
+          x: baseX - jitter(0, 3),
+          y: baseY + height - jitter(-1, 3),
+        }),
+      ],
     };
   }
 
-  private createQueueSnapshot(
+  private createCircleFeature(
     index: number,
     seededRandom: () => number,
-  ): OverviewQueueSnapshot {
-    const labels = ['Ingestion', 'Enrichment', 'Scoring', 'Delivery'];
-    const loadPercent = 35 + Math.floor(seededRandom() * 50);
+  ): GeoCircleFeature {
+    const intensity = 22 + Math.floor(seededRandom() * 62);
 
     return {
-      id: 'queue-' + (index + 1),
-      label: labels[index],
-      backlog: 70 + Math.floor(seededRandom() * 140),
-      loadPercent,
-      status: this.resolveQueueStatus(loadPercent),
-    };
-  }
-
-  private createRegionSnapshot(
-    index: number,
-    seededRandom: () => number,
-  ): OverviewRegionSnapshot {
-    const labels = ['NA', 'EU', 'LATAM', 'APAC'];
-
-    return {
-      id: 'region-' + (index + 1),
-      label: labels[index],
-      traffic: 130 + Math.floor(seededRandom() * 220),
-      latencyMs: 90 + Math.floor(seededRandom() * 80),
-      errorRate: Number((0.4 + seededRandom() * 1.3).toFixed(2)),
-    };
-  }
-
-  private createHighlight(
-    index: number,
-    seededRandom: () => number,
-  ): OverviewHighlight {
-    const tones: Array<'good' | 'warning' | 'critical'> = [
-      'good',
-      'warning',
-      'critical',
-    ];
-
-    return {
-      headline: 'Signal ' + (index + 1),
-      detail: 'Auto-generated insight ' + Math.floor(seededRandom() * 100),
-      tone: tones[index],
-    };
-  }
-
-  private createWorkerSnapshot(
-    index: number,
-    seededRandom: () => number,
-  ): ActivityWorkerSnapshot {
-    return {
-      id: 'worker-' + (index + 1),
-      label: 'Worker ' + (index + 1),
-      online: seededRandom() > 0.12,
-      utilization: 30 + Math.floor(seededRandom() * 55),
-      tasksInFlight: 2 + Math.floor(seededRandom() * 7),
-    };
-  }
-
-  private createChannelSnapshot(
-    index: number,
-    seededRandom: () => number,
-  ): ActivityChannelSnapshot {
-    const labels = ['Webhook', 'Kafka', 'Import', 'Notifier'];
-
-    return {
-      id: 'channel-' + (index + 1),
-      label: labels[index],
-      ratePerMinute: 35 + Math.floor(seededRandom() * 40),
-      successRate: Number((0.85 + seededRandom() * 0.12).toFixed(2)),
-      backlog: 4 + Math.floor(seededRandom() * 16),
-    };
-  }
-
-  private createEventSnapshot(
-    index: number,
-    seededRandom: () => number,
-  ): ActivityEventSnapshot {
-    const severities: Array<'info' | 'warning' | 'critical'> = [
-      'info',
-      'warning',
-      'critical',
-    ];
-    const types: Array<'SYNC' | 'IMPORT' | 'ALERT' | 'CHECKPOINT'> = [
-      'SYNC',
-      'IMPORT',
-      'ALERT',
-      'CHECKPOINT',
-    ];
-
-    return {
-      id: 'event-' + index,
-      at: new Date(Date.now() - index * 18000).toISOString(),
-      channel: ['Webhook', 'Kafka', 'Import', 'Notifier'][index % 4],
-      type: types[index % 4],
-      severity: severities[index % 3],
-      message: 'Pipeline event ' + index + ' recalculated downstream load.',
-    };
-  }
-
-  private createLiveEventSnapshot(
-    requestCount: number,
-    channels: ActivityChannelSnapshot[],
-  ): ActivityEventSnapshot {
-    const selectedChannel =
-      channels[Math.floor(Math.random() * channels.length)]?.label ?? 'Webhook';
-    const severities: Array<'info' | 'warning' | 'critical'> = [
-      'info',
-      'warning',
-      'critical',
-    ];
-    const types: Array<'SYNC' | 'IMPORT' | 'ALERT' | 'CHECKPOINT'> = [
-      'SYNC',
-      'IMPORT',
-      'ALERT',
-      'CHECKPOINT',
-    ];
-    const severity = severities[Math.floor(Math.random() * severities.length)];
-
-    return {
-      id: 'event-live-' + requestCount,
-      at: new Date().toISOString(),
-      channel: selectedChannel,
-      type: types[Math.floor(Math.random() * types.length)],
-      severity,
-      message:
-        severity === 'critical'
-          ? 'Critical pressure detected in ' + selectedChannel + '.'
-          : severity === 'warning'
-            ? 'Rising backlog detected in ' + selectedChannel + '.'
-            : 'Fresh checkpoint processed for ' + selectedChannel + '.',
+      id: 'hotspot-' + index,
+      label: 'Hotspot ' + index,
+      status: this.resolveStatus(intensity),
+      color: this.resolveCircleColor(intensity),
+      intensity,
+      radius: 8 + Math.floor(seededRandom() * 10),
+      center: {
+        x: 8 + Math.floor(seededRandom() * 84),
+        y: 8 + Math.floor(seededRandom() * 84),
+      },
     };
   }
 
@@ -455,25 +230,62 @@ export class MockDataService {
     return Math.floor(Math.random() * (max - min + 1)) + min;
   }
 
-  private randomSeededDelta(seededRandom: () => number): number {
-    return Math.floor(seededRandom() * 16) - 6;
+  private clampPoint(point: GeoPoint): GeoPoint {
+    return {
+      x: this.clampNumber(point.x, DEMO_MAP_WORLD_BOUNDS.minX + 2, DEMO_MAP_WORLD_BOUNDS.maxX - 2),
+      y: this.clampNumber(point.y, DEMO_MAP_WORLD_BOUNDS.minY + 2, DEMO_MAP_WORLD_BOUNDS.maxY - 2),
+    };
   }
 
   private clampNumber(value: number, min: number, max: number): number {
     return Math.min(max, Math.max(min, value));
   }
 
-  private resolveQueueStatus(
-    loadPercent: number,
-  ): 'healthy' | 'warning' | 'critical' {
-    if (loadPercent >= 80) {
+  private resolveStatus(intensity: number): GeoFeatureStatus {
+    if (intensity >= 76) {
       return 'critical';
     }
 
-    if (loadPercent >= 60) {
-      return 'warning';
+    if (intensity >= 48) {
+      return 'watch';
     }
 
-    return 'healthy';
+    return 'stable';
+  }
+
+  private resolvePolygonFill(intensity: number): string {
+    if (intensity >= 76) {
+      return '#dc2626';
+    }
+
+    if (intensity >= 48) {
+      return '#f59e0b';
+    }
+
+    return '#0f766e';
+  }
+
+  private resolvePolygonStroke(intensity: number): string {
+    if (intensity >= 76) {
+      return '#991b1b';
+    }
+
+    if (intensity >= 48) {
+      return '#b45309';
+    }
+
+    return '#115e59';
+  }
+
+  private resolveCircleColor(intensity: number): string {
+    if (intensity >= 76) {
+      return '#ea580c';
+    }
+
+    if (intensity >= 48) {
+      return '#f97316';
+    }
+
+    return '#fb923c';
   }
 }

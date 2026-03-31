@@ -1,18 +1,22 @@
 <main class="shell">
   <section class="hero" *ngIf="dashboardSummary$ | async as summary">
     <div>
-      <p class="eyebrow">Parli Realtime Testbed</p>
-      <h1>Visual diff streaming for separate domain stores</h1>
+      <p class="eyebrow">Parli Geo Streaming Lab</p>
+      <h1>Realtime map layers with explicit NgRx domains</h1>
       <p class="subtitle">
-        Core realtime logic lives in reusable infrastructure, while each domain
-        owns only its business shape and feature store.
+        Each layer owns its own actions, reducer, and effects while the shared
+        realtime engine streams live GEO diffs into a single map canvas.
       </p>
     </div>
 
     <div class="hero-stats">
       <article>
-        <span>Connected domains</span>
+        <span>Connected layers</span>
         <strong>{{ summary.connectedDomains }}/2</strong>
+      </article>
+      <article>
+        <span>Visible features</span>
+        <strong>{{ summary.visibleFeatures }}</strong>
       </article>
       <article>
         <span>Tracked patch events</span>
@@ -34,24 +38,31 @@
       placeholder="name@example.com"
     />
     <p>
-      Both domains subscribe with the same identity, but each domain keeps its own
-      independent NgRx store and GraphQL subscription lifecycle.
+      Both layers subscribe with the same identity, but each layer keeps its own
+      explicit NgRx lifecycle and patch history.
     </p>
   </section>
 
-  <section class="dashboard">
-    <app-overview-panel
-      [state]="overviewState$ | async"
-      [description]="overviewDomainFacade.definition.description"
-      (connect)="connectOverview()"
-      (disconnect)="disconnectOverview()"
-    ></app-overview-panel>
+  <section class="workspace">
+    <app-map-canvas
+      [regions]="regionsSnapshot$ | async"
+      [hotspots]="hotspotsSnapshot$ | async"
+    ></app-map-canvas>
 
-    <app-activity-panel
-      [state]="activityState$ | async"
-      [description]="activityDomainFacade.definition.description"
-      (connect)="connectActivity()"
-      (disconnect)="disconnectActivity()"
-    ></app-activity-panel>
+    <aside class="layer-stack">
+      <app-regions-layer-panel
+        [state]="regionsState$ | async"
+        [description]="regionsDefinition.description"
+        (connect)="connectRegions()"
+        (disconnect)="disconnectRegions()"
+      ></app-regions-layer-panel>
+
+      <app-hotspots-layer-panel
+        [state]="hotspotsState$ | async"
+        [description]="hotspotsDefinition.description"
+        (connect)="connectHotspots()"
+        (disconnect)="disconnectHotspots()"
+      ></app-hotspots-layer-panel>
+    </aside>
   </section>
 </main>

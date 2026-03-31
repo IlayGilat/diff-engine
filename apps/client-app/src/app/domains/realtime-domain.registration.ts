@@ -1,14 +1,16 @@
-import { ActivityDomainEffects } from './activity/store/activity-domain.effects';
-import { activityDomainStore } from './activity/store/activity-domain.store';
-import { OverviewDomainEffects } from './overview/store/overview-domain.effects';
-import { overviewDomainStore } from './overview/store/overview-domain.store';
+import { HotspotsLayerEffects } from './hotspots/store/hotspots-layer.effects';
+import { hotspotsLayerDefinition } from './hotspots/store/hotspots-layer.actions';
+import { hotspotsLayerReducer } from './hotspots/store/hotspots-layer.reducer';
+import { RegionsLayerEffects } from './regions/store/regions-layer.effects';
+import { regionsLayerDefinition } from './regions/store/regions-layer.actions';
+import { regionsLayerReducer } from './regions/store/regions-layer.reducer';
 
 export const REALTIME_DOMAIN_REDUCERS = {
-  [overviewDomainStore.definition.featureKey]: overviewDomainStore.reducer,
-  [activityDomainStore.definition.featureKey]: activityDomainStore.reducer,
+  [regionsLayerDefinition.featureKey]: regionsLayerReducer,
+  [hotspotsLayerDefinition.featureKey]: hotspotsLayerReducer,
 };
 
 export const REALTIME_DOMAIN_EFFECTS = [
-  OverviewDomainEffects,
-  ActivityDomainEffects,
+  RegionsLayerEffects,
+  HotspotsLayerEffects,
 ];
