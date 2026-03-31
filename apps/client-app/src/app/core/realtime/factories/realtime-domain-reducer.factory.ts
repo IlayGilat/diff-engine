@@ -1,48 +1,32 @@
 import {
+  Dictionary,
+  DomainPatchLogEntry,
   JsonObject,
   PollingConnectionState,
   PollingPatchEnvelope,
   PollingSessionViewState,
-  PollingSubscriptionTarget,
+  RealtimeDomainDefinition,
+  RealtimeDomainFeatureState,
+  RealtimeFeatureKey,
+  RealtimeDomainSelectors,
   buildSourceKey,
 } from '@org/models';
 import {
   ActionReducer,
-  MemoizedSelector,
   createFeatureSelector,
   createReducer,
   createSelector,
   on,
 } from '@ngrx/store';
+import { Operation } from 'fast-json-patch';
 import { applyPatch } from 'fast-json-patch';
-import { RealtimeDomainActionGroup } from './realtime-domain-actions.factory';
-import {
-  DomainPatchLogEntry,
-  RealtimeDomainDefinition,
-  RealtimeDomainFeatureState,
-} from '../models/realtime-domain-state.model';
-
-export interface RealtimeDomainSelectors<
-  TDomain extends string,
-  TSnapshot extends JsonObject,
-> {
-  selectFeatureState: MemoizedSelector<
-    object,
-    RealtimeDomainFeatureState<TSnapshot, TDomain>
-  >;
-  selectSession: MemoizedSelector<
-    object,
-    PollingSessionViewState<TSnapshot, TDomain>
-  >;
-  selectSnapshot: MemoizedSelector<object, TSnapshot | null>;
-  selectPatchLog: MemoizedSelector<object, DomainPatchLogEntry[]>;
-}
+import { RealtimeDomainActionGroup } from '@org/models';
 
 export function createRealtimeDomainReducer<
   TDomain extends string,
   TSnapshot extends JsonObject,
 >(
-  definition: RealtimeDomainDefinition<TDomain, TSnapshot>,
+  definition: RealtimeDomainDefinition<TDomain>,
   actions: RealtimeDomainActionGroup<TDomain, TSnapshot>,
 ): ActionReducer<RealtimeDomainFeatureState<TSnapshot, TDomain>> {
   return createReducer(
@@ -114,7 +98,9 @@ export function createRealtimeDomainReducer<
         kind: 'patch',
         operationCount: envelope.operations.length,
         message: describeOperations(envelope),
-        paths: envelope.operations.slice(0, 4).map((operation) => operation.path),
+        paths: envelope.operations
+          .slice(0, 4)
+          .map((operation: Operation) => operation.path),
       }),
     })),
     on(actions.streamErrorReceived, (state, { envelope }) => ({
@@ -134,14 +120,14 @@ export function createRealtimeDomainReducer<
         paths: [],
       }),
     })),
-  );
+  ) as unknown as ActionReducer<RealtimeDomainFeatureState<TSnapshot, TDomain>>;
 }
 
 export function createRealtimeDomainSelectors<
   TDomain extends string,
   TSnapshot extends JsonObject,
 >(
-  featureKey: string,
+  featureKey: RealtimeFeatureKey,
 ): RealtimeDomainSelectors<TDomain, TSnapshot> {
   const selectFeatureState =
     createFeatureSelector<RealtimeDomainFeatureState<TSnapshot, TDomain>>(
@@ -169,7 +155,7 @@ export function createRealtimeDomainSelectors<
 }
 
 function createInitialFeatureState<TDomain extends string, TSnapshot extends JsonObject>(
-  definition: RealtimeDomainDefinition<TDomain, TSnapshot>,
+  definition: RealtimeDomainDefinition<TDomain>,
 ): RealtimeDomainFeatureState<TSnapshot, TDomain> {
   return {
     session: createSessionState(definition.domain, ''),
@@ -252,7 +238,7 @@ function describeOperations<TDomain extends string>(
       counts[operation.op] = (counts[operation.op] ?? 0) + 1;
       return counts;
     },
-    {} as Record<string, number>,
+    {} as Dictionary<number>,
   );
 
   return Object.keys(operationCounts)

@@ -1,16 +1,9 @@
-import { JsonObject, PollingSubscriptionTarget, buildSourceKey } from '@org/models';
-
-export interface SnapshotSessionRecord<
-  TSnapshot extends JsonObject = JsonObject,
-  TDomain extends string = string,
-> {
-  sessionKey: string;
-  streamId: string;
-  sourceKey: string;
-  target: PollingSubscriptionTarget<TDomain>;
-  version: number;
-  lastSnapshot: TSnapshot;
-}
+import {
+  JsonObject,
+  PollingSubscriptionTarget,
+  SnapshotSessionRecord,
+  buildSourceKey,
+} from '@org/models';
 
 export function createSnapshotSessionRecord<
   TSnapshot extends JsonObject,

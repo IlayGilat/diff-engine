@@ -1,7 +1,10 @@
 import { CommonModule } from '@angular/common';
 import { Component, EventEmitter, Input, Output } from '@angular/core';
-import { GeoPolygonFeature, RegionsLayerSnapshot } from '@org/models';
-import { RealtimeDomainFeatureState } from '../../../core/realtime/models/realtime-domain-state.model';
+import {
+  GeoPolygonFeature,
+  RealtimeDomainFeatureState,
+  RegionsLayerSnapshot,
+} from '@org/models';
 
 @Component({
   selector: 'app-regions-layer-panel',

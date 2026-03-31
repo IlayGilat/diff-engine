@@ -5,8 +5,9 @@ import {
   GeoFeatureStatus,
   GeoPoint,
   GeoPolygonFeature,
+  RandomSource,
 } from '@org/models';
-import { DemoMapRandomFactory, RandomSource } from './demo-map-random.factory';
+import { DemoMapRandomFactory } from './demo-map-random.factory';
 
 @Injectable()
 export class DemoMapFeatureFactory {
@@ -20,6 +21,26 @@ export class DemoMapFeatureFactory {
     'South Gateway',
     'Carmel Window',
   ];
+  private readonly regionSuffixes = [
+    'Vector',
+    'Matrix',
+    'Spur',
+    'Bloom',
+    'Drift',
+    'Surge',
+    'Fault',
+    'Pulse',
+  ];
+  private readonly hotspotPrefixes = [
+    'Flash',
+    'Echo',
+    'Nova',
+    'Flare',
+    'Pulse',
+    'Spark',
+    'Surge',
+    'Drift',
+  ];
 
   constructor(private readonly demoMapRandomFactory: DemoMapRandomFactory) {}
 
@@ -28,39 +49,14 @@ export class DemoMapFeatureFactory {
     randomSource: RandomSource,
   ): GeoPolygonFeature {
     const intensity = this.demoMapRandomFactory.intBetween(randomSource, 28, 86);
-    const center = this.createPoint(randomSource, 0.22);
-    const vertexCount = this.demoMapRandomFactory.intBetween(randomSource, 5, 7);
-    const radiusX = this.demoMapRandomFactory.floatBetween(randomSource, 0.08, 0.2);
-    const radiusY = this.demoMapRandomFactory.floatBetween(randomSource, 0.06, 0.18);
-
-    const points = Array.from({ length: vertexCount }, (_, pointIndex) => {
-      const angleOffset = this.demoMapRandomFactory.floatBetween(
-        randomSource,
-        -0.18,
-        0.18,
-      );
-      const radiusScale = this.demoMapRandomFactory.floatBetween(
-        randomSource,
-        0.76,
-        1.24,
-      );
-      const angle =
-        -Math.PI / 2 +
-        (pointIndex / vertexCount) * Math.PI * 2 +
-        angleOffset;
-
-      return this.clampPoint({
-        x: center.x + Math.cos(angle) * radiusX * radiusScale,
-        y: center.y + Math.sin(angle) * radiusY * radiusScale,
-      });
-    });
+    const points = this.createPolygonPoints(randomSource);
 
     return {
       id: 'region-' + index,
-      label: this.regionLabels[(index - 1) % this.regionLabels.length],
+      label: this.createRegionLabel(index, randomSource),
       status: this.resolveStatus(intensity),
-      fill: this.resolvePolygonFill(intensity),
-      stroke: this.resolvePolygonStroke(intensity),
+      fill: this.resolvePolygonFill(intensity, randomSource),
+      stroke: this.resolvePolygonStroke(intensity, randomSource),
       intensity,
       points,
     };
@@ -74,12 +70,12 @@ export class DemoMapFeatureFactory {
 
     return {
       id: 'hotspot-' + index,
-      label: 'Hotspot ' + index,
+      label: this.createHotspotLabel(index, randomSource),
       status: this.resolveStatus(intensity),
-      color: this.resolveCircleColor(intensity),
+      color: this.resolveCircleColor(intensity, randomSource),
       intensity,
-      radius: this.demoMapRandomFactory.intBetween(randomSource, 5000, 16000),
-      center: this.createPoint(randomSource, 0.12),
+      radius: this.demoMapRandomFactory.intBetween(randomSource, 3500, 22000),
+      center: this.createPoint(randomSource, 0.08),
     };
   }
 
@@ -89,27 +85,37 @@ export class DemoMapFeatureFactory {
   ): GeoPolygonFeature {
     const intensity = this.clampNumber(
       feature.intensity +
-        this.demoMapRandomFactory.intBetween(randomSource, -12, 18),
+        this.demoMapRandomFactory.intBetween(randomSource, -28, 34),
       18,
       100,
     );
+    const shouldRebuildShape = this.demoMapRandomFactory.chance(randomSource, 0.35);
+    const basePoints = shouldRebuildShape
+      ? this.createPolygonPoints(randomSource)
+      : feature.points.map((point) =>
+          this.clampPoint({
+            x:
+              point.x +
+              this.demoMapRandomFactory.floatBetween(randomSource, -0.012, 0.012),
+            y:
+              point.y +
+              this.demoMapRandomFactory.floatBetween(randomSource, -0.01, 0.01),
+          }),
+        );
 
     return {
       ...feature,
       intensity,
+      label: this.demoMapRandomFactory.chance(randomSource, 0.18)
+        ? this.createRegionLabel(
+            this.demoMapRandomFactory.intBetween(randomSource, 1, 999),
+            randomSource,
+          )
+        : feature.label,
       status: this.resolveStatus(intensity),
-      fill: this.resolvePolygonFill(intensity),
-      stroke: this.resolvePolygonStroke(intensity),
-      points: feature.points.map((point) =>
-        this.clampPoint({
-          x:
-            point.x +
-            this.demoMapRandomFactory.floatBetween(randomSource, -0.035, 0.035),
-          y:
-            point.y +
-            this.demoMapRandomFactory.floatBetween(randomSource, -0.03, 0.03),
-        }),
-      ),
+      fill: this.resolvePolygonFill(intensity, randomSource),
+      stroke: this.resolvePolygonStroke(intensity, randomSource),
+      points: basePoints,
     };
   }
 
@@ -119,30 +125,39 @@ export class DemoMapFeatureFactory {
   ): GeoCircleFeature {
     const intensity = this.clampNumber(
       feature.intensity +
-        this.demoMapRandomFactory.intBetween(randomSource, -14, 20),
+        this.demoMapRandomFactory.intBetween(randomSource, -30, 36),
       12,
       100,
     );
+    const shouldRelocate = this.demoMapRandomFactory.chance(randomSource, 0.28);
 
     return {
       ...feature,
+      label: this.demoMapRandomFactory.chance(randomSource, 0.22)
+        ? this.createHotspotLabel(
+            this.demoMapRandomFactory.intBetween(randomSource, 1, 999),
+            randomSource,
+          )
+        : feature.label,
       intensity,
       radius: this.clampNumber(
         feature.radius +
-          this.demoMapRandomFactory.intBetween(randomSource, -1200, 1600),
+          this.demoMapRandomFactory.intBetween(randomSource, -3500, 5000),
         3500,
-        22000,
+        32000,
       ),
       status: this.resolveStatus(intensity),
-      color: this.resolveCircleColor(intensity),
-      center: this.clampPoint({
-        x:
-          feature.center.x +
-          this.demoMapRandomFactory.floatBetween(randomSource, -0.04, 0.04),
-        y:
-          feature.center.y +
-          this.demoMapRandomFactory.floatBetween(randomSource, -0.035, 0.035),
-      }),
+      color: this.resolveCircleColor(intensity, randomSource),
+      center: shouldRelocate
+        ? this.createPoint(randomSource, 0.06)
+        : this.clampPoint({
+            x:
+              feature.center.x +
+              this.demoMapRandomFactory.floatBetween(randomSource, -0.11, 0.11),
+            y:
+              feature.center.y +
+              this.demoMapRandomFactory.floatBetween(randomSource, -0.1, 0.1),
+          }),
     };
   }
 
@@ -180,6 +195,55 @@ export class DemoMapFeatureFactory {
     return Math.min(max, Math.max(min, value));
   }
 
+  private createPolygonPoints(randomSource: RandomSource): GeoPoint[] {
+    const center = this.createPoint(randomSource, 0.24);
+    const vertexCount = this.demoMapRandomFactory.intBetween(randomSource, 4, 9);
+    const radiusX = this.demoMapRandomFactory.floatBetween(randomSource, 0.005, 0.024);
+    const radiusY = this.demoMapRandomFactory.floatBetween(randomSource, 0.004, 0.02);
+
+    return Array.from({ length: vertexCount }, (_, pointIndex) => {
+      const angleOffset = this.demoMapRandomFactory.floatBetween(
+        randomSource,
+        -0.28,
+        0.28,
+      );
+      const radiusScale = this.demoMapRandomFactory.floatBetween(
+        randomSource,
+        0.72,
+        1.06,
+      );
+      const angle =
+        -Math.PI / 2 +
+        (pointIndex / vertexCount) * Math.PI * 2 +
+        angleOffset;
+
+      return this.clampPoint({
+        x: center.x + Math.cos(angle) * radiusX * radiusScale,
+        y: center.y + Math.sin(angle) * radiusY * radiusScale,
+      });
+    });
+  }
+
+  private createRegionLabel(index: number, randomSource: RandomSource): string {
+    const baseLabel =
+      this.regionLabels[(index - 1) % this.regionLabels.length] ?? 'Region';
+    const suffix = this.demoMapRandomFactory.pickOne(
+      randomSource,
+      this.regionSuffixes,
+    );
+
+    return baseLabel + ' ' + suffix;
+  }
+
+  private createHotspotLabel(index: number, randomSource: RandomSource): string {
+    const prefix = this.demoMapRandomFactory.pickOne(
+      randomSource,
+      this.hotspotPrefixes,
+    );
+
+    return prefix + ' Hotspot ' + index;
+  }
+
   private resolveStatus(intensity: number): GeoFeatureStatus {
     if (intensity >= 76) {
       return 'critical';
@@ -192,39 +256,76 @@ export class DemoMapFeatureFactory {
     return 'stable';
   }
 
-  private resolvePolygonFill(intensity: number): string {
-    if (intensity >= 76) {
-      return '#dc2626';
-    }
-
-    if (intensity >= 48) {
-      return '#f59e0b';
-    }
-
-    return '#0f766e';
+  private resolvePolygonFill(
+    intensity: number,
+    randomSource: RandomSource,
+  ): string {
+    return this.createColor(
+      intensity >= 76
+        ? [210, 18, 18]
+        : intensity >= 48
+          ? [245, 140, 11]
+          : [15, 118, 110],
+      randomSource,
+      26,
+    );
   }
 
-  private resolvePolygonStroke(intensity: number): string {
-    if (intensity >= 76) {
-      return '#991b1b';
-    }
-
-    if (intensity >= 48) {
-      return '#b45309';
-    }
-
-    return '#115e59';
+  private resolvePolygonStroke(
+    intensity: number,
+    randomSource: RandomSource,
+  ): string {
+    return this.createColor(
+      intensity >= 76
+        ? [153, 27, 27]
+        : intensity >= 48
+          ? [180, 83, 9]
+          : [17, 94, 89],
+      randomSource,
+      18,
+    );
   }
 
-  private resolveCircleColor(intensity: number): string {
-    if (intensity >= 76) {
-      return '#ea580c';
-    }
+  private resolveCircleColor(
+    intensity: number,
+    randomSource: RandomSource,
+  ): string {
+    return this.createColor(
+      intensity >= 76
+        ? [234, 88, 12]
+        : intensity >= 48
+          ? [249, 115, 22]
+          : [251, 146, 60],
+      randomSource,
+      34,
+    );
+  }
 
-    if (intensity >= 48) {
-      return '#f97316';
-    }
+  private createColor(
+    baseColor: [number, number, number],
+    randomSource: RandomSource,
+    variance: number,
+  ): string {
+    const channels = baseColor.map((channel) =>
+      this.clampNumber(
+        Math.round(
+          channel +
+            this.demoMapRandomFactory.intBetween(
+              randomSource,
+              -variance,
+              variance,
+            ),
+        ),
+        0,
+        255,
+      ),
+    );
 
-    return '#fb923c';
+    return (
+      '#' +
+      channels
+        .map((channel) => Number(channel).toString(16).padStart(2, '0'))
+        .join('')
+    );
   }
 }

@@ -4,16 +4,18 @@ import { FormsModule } from '@angular/forms';
 import { combineLatest, map } from 'rxjs';
 import { Store } from '@ngrx/store';
 import {
-  hotspotsLayerDefinition,
   hotspotsLayerActions,
-} from '../features/layers/hotspots/state/hotspots-layer.actions';
-import { hotspotsLayerSelectors } from '../features/layers/hotspots/state/hotspots-layer.reducer';
-import { HotspotsLayerPanelComponent } from '../features/layers/panels/hotspots-layer-panel.component';
+} from '../entities/hotspots/state/hotspots-layer.actions';
+import { hotspotsLayerSelectors } from '../entities/hotspots/state/hotspots-layer.reducer';
 import {
   regionsLayerActions,
-  regionsLayerDefinition,
-} from '../features/layers/regions/state/regions-layer.actions';
-import { regionsLayerSelectors } from '../features/layers/regions/state/regions-layer.reducer';
+} from '../entities/regions/state/regions-layer.actions';
+import { regionsLayerSelectors } from '../entities/regions/state/regions-layer.reducer';
+import { HotspotsLayerPanelComponent } from '../features/layers/panels/hotspots-layer-panel.component';
+import {
+  hotspotsLayerUiMetadata,
+  regionsLayerUiMetadata,
+} from '../features/layers/config/layer-ui-metadata';
 import { RegionsLayerPanelComponent } from '../features/layers/panels/regions-layer-panel.component';
 import { MapCanvasComponent } from '../features/map/map-canvas.component';
 
@@ -34,8 +36,8 @@ export class AppComponent {
   private readonly store = inject(Store);
 
   email = 'demo@example.com';
-  readonly regionsDefinition = regionsLayerDefinition;
-  readonly hotspotsDefinition = hotspotsLayerDefinition;
+  readonly regionsLayerUiMetadata = regionsLayerUiMetadata;
+  readonly hotspotsLayerUiMetadata = hotspotsLayerUiMetadata;
   readonly regionsState$ = this.store.select(
     regionsLayerSelectors.selectFeatureState,
   );

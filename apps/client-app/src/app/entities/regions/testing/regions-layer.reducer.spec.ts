@@ -1,7 +1,7 @@
 import { buildSourceKey, RegionsLayerSnapshot } from '@org/models';
 import { Action } from '@ngrx/store';
-import { regionsLayerActions } from '../regions/state/regions-layer.actions';
-import { regionsLayerReducer } from '../regions/state/regions-layer.reducer';
+import { regionsLayerActions } from '../state/regions-layer.actions';
+import { regionsLayerReducer } from '../state/regions-layer.reducer';
 
 function createSnapshot(): RegionsLayerSnapshot {
   return {

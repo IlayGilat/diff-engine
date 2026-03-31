@@ -1,7 +1,7 @@
 import { buildSourceKey, HotspotsLayerSnapshot } from '@org/models';
 import { Action } from '@ngrx/store';
-import { hotspotsLayerActions } from '../hotspots/state/hotspots-layer.actions';
-import { hotspotsLayerReducer } from '../hotspots/state/hotspots-layer.reducer';
+import { hotspotsLayerActions } from '../state/hotspots-layer.actions';
+import { hotspotsLayerReducer } from '../state/hotspots-layer.reducer';
 
 function createSnapshot(): HotspotsLayerSnapshot {
   return {

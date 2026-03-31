@@ -1,35 +1,33 @@
+import { Dictionary, JsonObject, SnapshotSessionRecord, SnapshotStoreAdapter } from '@org/models';
 import { Injectable } from '@nestjs/common';
-import { JsonObject } from '@org/models';
-import { SnapshotSessionRecord } from '../models/snapshot-session-record.model';
-import { SnapshotStoreAdapter } from './snapshot-store.adapter';
 
 @Injectable()
 export class InMemorySnapshotStoreAdapter implements SnapshotStoreAdapter {
-  private readonly records = new Map<string, SnapshotSessionRecord>();
+  private readonly records: Dictionary<SnapshotSessionRecord> = {};
 
   set<TSnapshot extends JsonObject>(
     record: SnapshotSessionRecord<TSnapshot>,
   ): SnapshotSessionRecord<TSnapshot> {
-    this.records.set(record.sessionKey, record);
+    this.records[record.sessionKey] = record;
     return record;
   }
 
   get<TSnapshot extends JsonObject>(
     sessionKey: string,
   ): SnapshotSessionRecord<TSnapshot> | undefined {
-    return this.records.get(sessionKey) as
+    return this.records[sessionKey] as
       | SnapshotSessionRecord<TSnapshot>
       | undefined;
   }
 
   delete(sessionKey: string): void {
-    this.records.delete(sessionKey);
+    delete this.records[sessionKey];
   }
 
   listByStreamId<TSnapshot extends JsonObject>(
     streamId: string,
   ): Array<SnapshotSessionRecord<TSnapshot>> {
-    return Array.from(this.records.values()).filter(
+    return Object.values(this.records).filter(
       (record) => record.streamId === streamId,
     ) as Array<SnapshotSessionRecord<TSnapshot>>;
   }

@@ -52,14 +52,14 @@
     <aside class="layer-stack">
       <app-regions-layer-panel
         [state]="regionsState$ | async"
-        [description]="regionsDefinition.description"
+        [description]="regionsLayerUiMetadata.description"
         (connect)="connectRegions()"
         (disconnect)="disconnectRegions()"
       ></app-regions-layer-panel>
 
       <app-hotspots-layer-panel
         [state]="hotspotsState$ | async"
-        [description]="hotspotsDefinition.description"
+        [description]="hotspotsLayerUiMetadata.description"
         (connect)="connectHotspots()"
         (disconnect)="disconnectHotspots()"
       ></app-hotspots-layer-panel>
