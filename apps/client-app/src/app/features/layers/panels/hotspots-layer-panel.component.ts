@@ -1,7 +1,10 @@
 import { CommonModule } from '@angular/common';
 import { Component, EventEmitter, Input, Output } from '@angular/core';
-import { GeoCircleFeature, HotspotsLayerSnapshot } from '@org/models';
-import { RealtimeDomainFeatureState } from '../../../core/realtime/models/realtime-domain-state.model';
+import {
+  GeoCircleFeature,
+  HotspotsLayerSnapshot,
+  RealtimeDomainFeatureState,
+} from '@org/models';
 
 @Component({
   selector: 'app-hotspots-layer-panel',

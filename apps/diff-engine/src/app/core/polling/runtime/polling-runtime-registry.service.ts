@@ -1,23 +1,19 @@
+import { Dictionary, PollingRuntimeState } from '@org/models';
 import { Injectable } from '@nestjs/common';
-
-interface PollingRuntimeState {
-  intervalId: NodeJS.Timeout;
-  isPolling: boolean;
-}
 
 @Injectable()
 export class PollingRuntimeRegistryService {
-  private readonly runtimeState = new Map<string, PollingRuntimeState>();
+  private readonly runtimeState: Dictionary<PollingRuntimeState> = {};
 
-  register(sessionKey: string, intervalId: NodeJS.Timeout): void {
-    this.runtimeState.set(sessionKey, {
+  register(sessionKey: string, intervalId: ReturnType<typeof setInterval>): void {
+    this.runtimeState[sessionKey] = {
       intervalId,
       isPolling: false,
-    });
+    };
   }
 
   tryBeginPolling(sessionKey: string): boolean {
-    const runtimeState = this.runtimeState.get(sessionKey);
+    const runtimeState = this.runtimeState[sessionKey];
     if (!runtimeState || runtimeState.isPolling) {
       return false;
     }
@@ -27,19 +23,19 @@ export class PollingRuntimeRegistryService {
   }
 
   endPolling(sessionKey: string): void {
-    const runtimeState = this.runtimeState.get(sessionKey);
+    const runtimeState = this.runtimeState[sessionKey];
     if (runtimeState) {
       runtimeState.isPolling = false;
     }
   }
 
   clear(sessionKey: string): void {
-    const runtimeState = this.runtimeState.get(sessionKey);
+    const runtimeState = this.runtimeState[sessionKey];
     if (!runtimeState) {
       return;
     }
 
     clearInterval(runtimeState.intervalId);
-    this.runtimeState.delete(sessionKey);
+    delete this.runtimeState[sessionKey];
   }
 }

@@ -1,11 +1,12 @@
-import { Injectable } from '@nestjs/common';
-import { JsonObject, PollingSubscriptionTarget } from '@org/models';
-import { SnapshotStoreAdapter } from '../adapters/snapshot-store.adapter';
-import { SnapshotStoreAdapterBuilder } from '../builders/snapshot-store-adapter.builder';
 import {
+  JsonObject,
+  PollingSubscriptionTarget,
   SnapshotSessionRecord,
-  createSnapshotSessionRecord,
-} from '../models/snapshot-session-record.model';
+  SnapshotStoreAdapter,
+} from '@org/models';
+import { Injectable } from '@nestjs/common';
+import { SnapshotStoreAdapterBuilder } from '../builders/snapshot-store-adapter.builder';
+import { createSnapshotSessionRecord } from '../models/snapshot-session-record.model';
 
 @Injectable()
 export class SnapshotSessionStoreService {

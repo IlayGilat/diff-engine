@@ -1,5 +1,9 @@
 import { Injectable } from '@angular/core';
+import { inject } from '@angular/core';
 import {
+  ActiveRealtimeStream,
+  Dictionary,
+  GraphqlOperationResponse,
   JsonObject,
   PollingSnapshotEnvelope,
   PollingStopTarget,
@@ -14,17 +18,6 @@ import { Observable, Subject, filter } from 'rxjs';
 import { RealtimeClientConfigService } from '../../config/services/realtime-client-config.service';
 import { AbstractDomainStreamClient } from './domain-stream-client.base';
 
-interface ActiveRealtimeStream {
-  streamId: string;
-  target: PollingSubscriptionTarget<string>;
-  unsubscribe?: () => void;
-}
-
-interface GraphqlResponse<TData> {
-  data?: TData;
-  errors?: Array<{ message: string }>;
-}
-
 function parseRealtimePayload<TValue>(payload: string): TValue {
   return JSON.parse(payload) as TValue;
 }
@@ -33,17 +26,12 @@ function parseRealtimePayload<TValue>(payload: string): TValue {
   providedIn: 'root',
 })
 export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient {
+  private readonly realtimeClientConfigService = inject(RealtimeClientConfigService);
   private graphqlWsClient: Client | null = null;
-  private readonly activeTargets = new Map<string, ActiveRealtimeStream>();
+  private readonly activeTargets: Dictionary<ActiveRealtimeStream> = {};
   private readonly eventStream = new Subject<
     RealtimeDomainClientEvent<JsonObject, string>
   >();
-
-  constructor(
-    private readonly realtimeClientConfigService: RealtimeClientConfigService,
-  ) {
-    super();
-  }
 
   connect<TDomain extends string, TSnapshot extends JsonObject>(
     target: PollingSubscriptionTarget<TDomain>,
@@ -56,7 +44,7 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
       target: normalizedTarget,
     };
 
-    this.activeTargets.set(normalizedTarget.domain, stream);
+    this.activeTargets[normalizedTarget.domain] = stream;
     this.ensureGraphqlWsClient();
     this.startSubscription(stream);
     void this.startDomain(stream);
@@ -67,17 +55,17 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
   }
 
   disconnect(domainKey: string): void {
-    const stream = this.activeTargets.get(domainKey);
+    const stream = this.activeTargets[domainKey];
     if (!stream) {
       return;
     }
 
-    this.activeTargets.delete(domainKey);
+    delete this.activeTargets[domainKey];
     stream.unsubscribe?.();
     void this.stopDomain(stream);
     this.emitDomainDisconnected(stream.target);
 
-    if (this.activeTargets.size === 0) {
+    if (Object.keys(this.activeTargets).length === 0) {
       this.closeGraphqlWsClient();
     }
   }
@@ -91,7 +79,7 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
       url: this.realtimeClientConfigService.diffEngineWsUrl,
       on: {
         closed: () => {
-          this.activeTargets.forEach((stream) => {
+          Object.values(this.activeTargets).forEach((stream) => {
             this.emitDomainDisconnected(stream.target);
           });
         },
@@ -132,7 +120,7 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
           this.emitClientError(stream.target, this.getGraphqlWsErrorMessage(error));
         },
         complete: () => {
-          if (this.activeTargets.has(stream.target.domain)) {
+          if (this.activeTargets[stream.target.domain]) {
             this.emitDomainDisconnected(stream.target);
           }
         },
@@ -255,7 +243,7 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
 
   private async executeOperation<TData>(
     query: string,
-    variables: Record<string, string>,
+    variables: Dictionary<string>,
   ): Promise<TData> {
     const response = await fetch(this.realtimeClientConfigService.diffEngineHttpUrl, {
       method: 'POST',
@@ -272,7 +260,7 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
       throw new Error('GraphQL request failed with status ' + response.status + '.');
     }
 
-    const payload = (await response.json()) as GraphqlResponse<TData>;
+    const payload = (await response.json()) as GraphqlOperationResponse<TData>;
     if (payload.errors?.length) {
       throw new Error(payload.errors.map((error) => error.message).join(', '));
     }

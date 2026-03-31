@@ -192,7 +192,7 @@ export class MapCanvasComponent
         color: feature.stroke,
         fillColor: feature.fill,
         fillOpacity: this.opacityForIntensity(feature.intensity),
-        weight: feature.status === 'critical' ? 3.5 : 2.25,
+        weight: feature.status === 'critical' ? 2.5 : 1.6,
       })
         .bindTooltip(feature.label, {
           direction: 'center',
@@ -255,7 +255,7 @@ export class MapCanvasComponent
   }
 
   private opacityForIntensity(intensity: number): number {
-    return Math.max(0.25, Math.min(0.78, intensity / 130));
+    return Math.max(0.12, Math.min(0.32, intensity / 220));
   }
 
   private supportsLeafletRuntime(): boolean {
