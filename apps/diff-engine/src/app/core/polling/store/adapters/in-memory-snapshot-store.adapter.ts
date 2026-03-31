@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { JsonObject } from '@org/models';
-import { SnapshotSessionRecord } from '../snapshot-session-record.model';
+import { SnapshotSessionRecord } from '../models/snapshot-session-record.model';
 import { SnapshotStoreAdapter } from './snapshot-store.adapter';
 
 @Injectable()

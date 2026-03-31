@@ -1,6 +1,6 @@
 import { Args, Mutation, Query, Resolver, Subscription } from '@nestjs/graphql';
 import { PollingSubscriptionTarget } from '@org/models';
-import { PollingOrchestratorService } from '../polling/polling-orchestrator.service';
+import { PollingOrchestratorService } from '../polling/services/polling-orchestrator.service';
 import { PollingEventPublisherService } from './polling-event-publisher.service';
 
 @Resolver()
