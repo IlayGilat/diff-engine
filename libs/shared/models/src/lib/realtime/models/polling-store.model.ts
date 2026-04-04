@@ -3,8 +3,10 @@ import { JsonObject } from '../../common/models/json-value.model';
 import { PollingSubscriptionTarget } from './realtime-polling.model';
 
 export interface PollingRuntimeState {
-  intervalId: ReturnType<typeof setInterval>;
+  intervalId: ReturnType<typeof setInterval> | null;
+  destroyTimeoutId: ReturnType<typeof setTimeout> | null;
   isPolling: boolean;
+  lifecycle: 'active' | 'paused';
 }
 
 export interface SnapshotSessionRecord<
@@ -16,6 +18,7 @@ export interface SnapshotSessionRecord<
   sourceKey: string;
   target: PollingSubscriptionTarget<TDomain>;
   version: number;
+  snapshotHash: string;
   lastSnapshot: TSnapshot;
 }
 

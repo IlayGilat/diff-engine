@@ -25,6 +25,7 @@ export interface PollingSnapshotEnvelope<
   sourceKey: string;
   target: PollingSubscriptionTarget<TDomain>;
   version: number;
+  snapshotHash: string;
   receivedAt: string;
   snapshot: TSnapshot;
 }
@@ -33,9 +34,36 @@ export interface PollingPatchEnvelope<TDomain extends string = string> {
   sourceKey: string;
   target: PollingSubscriptionTarget<TDomain>;
   version: number;
+  snapshotHash: string;
   receivedAt: string;
   operations: Operation[];
 }
+
+export interface PollingResumeSuccessEnvelope<TDomain extends string = string> {
+  kind: 'resumed';
+  resetStore: false;
+  sourceKey: string;
+  target: PollingSubscriptionTarget<TDomain>;
+  version: number;
+  snapshotHash: string;
+  receivedAt: string;
+}
+
+export interface PollingResumeResyncEnvelope<
+  TSnapshot extends JsonObject = JsonObject,
+  TDomain extends string = string,
+> {
+  kind: 'resynced';
+  resetStore: true;
+  envelope: PollingSnapshotEnvelope<TSnapshot, TDomain>;
+}
+
+export type PollingResumeEnvelope<
+  TSnapshot extends JsonObject = JsonObject,
+  TDomain extends string = string,
+> =
+  | PollingResumeSuccessEnvelope<TDomain>
+  | PollingResumeResyncEnvelope<TSnapshot, TDomain>;
 
 export interface PollingStreamErrorEnvelope<TDomain extends string = string> {
   sourceKey: string;
@@ -53,6 +81,7 @@ export interface PollingSessionViewState<
   target: PollingSubscriptionTarget<TDomain>;
   snapshot: TSnapshot | null;
   version: number;
+  snapshotHash: string | null;
   lastReceivedAt: string | null;
   lastPatchOperationCount: number;
   connectionState: PollingConnectionState;
@@ -71,6 +100,16 @@ export type RealtimeDomainClientEvent<
     }
   | {
       kind: 'disconnected';
+      sourceKey: string;
+      target: PollingSubscriptionTarget<TDomain>;
+      receivedAt: string;
+    }
+  | {
+      kind: 'resumed';
+      envelope: PollingResumeSuccessEnvelope<TDomain>;
+    }
+  | {
+      kind: 'reset';
       sourceKey: string;
       target: PollingSubscriptionTarget<TDomain>;
       receivedAt: string;

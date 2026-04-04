@@ -9,6 +9,8 @@ export interface ActiveRealtimeStream {
   streamId: string;
   target: PollingSubscriptionTarget<string>;
   unsubscribe?: () => void;
+  hasStarted: boolean;
+  snapshotHash?: string | null;
 }
 
 export interface GraphqlOperationError {

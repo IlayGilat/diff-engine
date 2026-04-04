@@ -21,9 +21,16 @@ export class SnapshotSessionStoreService {
     streamId: string,
     target: PollingSubscriptionTarget<TDomain>,
     snapshot: TSnapshot,
+    snapshotHash: string,
   ): SnapshotSessionRecord<TSnapshot, TDomain> {
     return this.snapshotStoreAdapter.set(
-      createSnapshotSessionRecord(sessionKey, streamId, target, snapshot),
+      createSnapshotSessionRecord(
+        sessionKey,
+        streamId,
+        target,
+        snapshot,
+        snapshotHash,
+      ),
     ) as SnapshotSessionRecord<TSnapshot, TDomain>;
   }
 
@@ -42,6 +49,7 @@ export class SnapshotSessionStoreService {
   updateSnapshot<TSnapshot extends JsonObject>(
     sessionKey: string,
     snapshot: TSnapshot,
+    snapshotHash: string,
   ): SnapshotSessionRecord<TSnapshot> | undefined {
     const existingRecord = this.snapshotStoreAdapter.get<TSnapshot>(sessionKey);
     if (!existingRecord) {
@@ -49,6 +57,7 @@ export class SnapshotSessionStoreService {
     }
 
     existingRecord.version += 1;
+    existingRecord.snapshotHash = snapshotHash;
     existingRecord.lastSnapshot = snapshot;
     return this.snapshotStoreAdapter.set(existingRecord);
   }

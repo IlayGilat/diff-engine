@@ -8,6 +8,7 @@ type Query {
 
 type Mutation {
   startPolling(streamId: String!, domain: String!, email: String!): String!
+  resumePolling(streamId: String!, domain: String!, email: String!, lastKnownHash: String): String!
   stopPolling(streamId: String!, domain: String!): Boolean!
 }
 

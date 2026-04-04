@@ -68,6 +68,24 @@ export function createRealtimeDomainReducer<
         lastReceivedAt: receivedAt,
       },
     })),
+    on(actions.resumed, (state, { envelope }) => ({
+      ...state,
+      session: {
+        ...state.session,
+        sourceKey: envelope.sourceKey,
+        target: envelope.target,
+        version: envelope.version,
+        snapshotHash: envelope.snapshotHash,
+        connectionState: 'connected' as PollingConnectionState,
+        lastReceivedAt: envelope.receivedAt,
+        errorMessage: null,
+      },
+    })),
+    on(actions.sessionReset, (state, { sourceKey, target, receivedAt }) => ({
+      ...state,
+      session: resetSessionState(state.session, sourceKey, target, receivedAt),
+      patchLog: [],
+    })),
     on(actions.snapshotReceived, (state, { envelope }) => ({
       ...state,
       session: {
@@ -75,6 +93,7 @@ export function createRealtimeDomainReducer<
         target: envelope.target,
         snapshot: envelope.snapshot,
         version: envelope.version,
+        snapshotHash: envelope.snapshotHash,
         lastReceivedAt: envelope.receivedAt,
         lastPatchOperationCount: 0,
         connectionState: 'connected' as PollingConnectionState,
@@ -177,6 +196,7 @@ function createSessionState<TDomain extends string, TSnapshot extends JsonObject
     target,
     snapshot: null,
     version: 0,
+    snapshotHash: null,
     lastReceivedAt: null,
     lastPatchOperationCount: 0,
     connectionState: 'disconnected',
@@ -216,9 +236,32 @@ function applyPatchEnvelope<TDomain extends string, TSnapshot extends JsonObject
     ...session,
     snapshot: patchResult.newDocument as TSnapshot,
     version: envelope.version,
+    snapshotHash: envelope.snapshotHash,
     lastReceivedAt: envelope.receivedAt,
     lastPatchOperationCount: envelope.operations.length,
     connectionState: 'connected',
+    errorMessage: null,
+  };
+}
+
+function resetSessionState<TDomain extends string, TSnapshot extends JsonObject>(
+  session: PollingSessionViewState<TSnapshot, TDomain>,
+  sourceKey: string,
+  target: {
+    domain: TDomain;
+    email: string;
+  },
+  receivedAt: string,
+): PollingSessionViewState<TSnapshot, TDomain> {
+  return {
+    sourceKey,
+    target,
+    snapshot: null,
+    version: 0,
+    snapshotHash: null,
+    lastReceivedAt: receivedAt,
+    lastPatchOperationCount: 0,
+    connectionState: session.connectionState,
     errorMessage: null,
   };
 }

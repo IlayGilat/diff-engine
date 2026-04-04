@@ -99,6 +99,16 @@ export abstract class AbstractRealtimeEntityEffects<
           target: event.target,
           receivedAt: event.receivedAt,
         }) as Action;
+      case 'resumed':
+        return actions.resumed({
+          envelope: event.envelope,
+        }) as Action;
+      case 'reset':
+        return actions.sessionReset({
+          sourceKey: event.sourceKey,
+          target: event.target,
+          receivedAt: event.receivedAt,
+        }) as Action;
       case 'snapshot':
         return actions.snapshotReceived({
           envelope: event.envelope,

@@ -18,6 +18,13 @@
         }
       }
     },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run",
+        "cwd": "apps/diff-engine"
+      }
+    },
     "prune-lockfile": {
       "dependsOn": ["build"],
       "cache": true,

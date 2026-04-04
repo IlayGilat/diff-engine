@@ -5,6 +5,7 @@ import {
   Dictionary,
   GraphqlOperationResponse,
   JsonObject,
+  PollingResumeEnvelope,
   PollingSnapshotEnvelope,
   PollingStopTarget,
   PollingStreamErrorEnvelope,
@@ -42,6 +43,8 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
     const stream: ActiveRealtimeStream = {
       streamId: this.createStreamId(normalizedTarget),
       target: normalizedTarget,
+      hasStarted: false,
+      snapshotHash: null,
     };
 
     this.activeTargets[normalizedTarget.domain] = stream;
@@ -78,6 +81,15 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
     this.graphqlWsClient = createClient({
       url: this.realtimeClientConfigService.diffEngineWsUrl,
       on: {
+        connected: (_socket, _payload, wasRetry) => {
+          if (!wasRetry) {
+            return;
+          }
+
+          Object.values(this.activeTargets).forEach((stream) => {
+            void this.resumeDomain(stream);
+          });
+        },
         closed: () => {
           Object.values(this.activeTargets).forEach((stream) => {
             this.emitDomainDisconnected(stream.target);
@@ -105,18 +117,29 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
       },
       {
         next: (result) => {
+          if (!this.isActiveStream(stream)) {
+            return;
+          }
+
           const payload = result.data?.['pollingEvents'];
           if (!payload) {
             return;
           }
 
-          this.eventStream.next(
+          const event =
             parseRealtimePayload<RealtimeDomainClientEvent<JsonObject, string>>(
               payload as string,
-            ),
+            );
+          this.updateSnapshotHash(stream, event);
+          this.eventStream.next(
+            event,
           );
         },
         error: (error) => {
+          if (!this.isActiveStream(stream)) {
+            return;
+          }
+
           this.emitClientError(stream.target, this.getGraphqlWsErrorMessage(error));
         },
         complete: () => {
@@ -153,6 +176,16 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
         },
       );
 
+      if (!this.isActiveStream(stream)) {
+        return;
+      }
+
+      const snapshotEnvelope =
+        parseRealtimePayload<PollingSnapshotEnvelope<JsonObject, string>>(
+          started.startPolling,
+        );
+      stream.hasStarted = true;
+      stream.snapshotHash = snapshotEnvelope.snapshotHash;
       this.eventStream.next({
         kind: 'connected',
         sourceKey: buildSourceKey(stream.target),
@@ -161,12 +194,77 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
       });
       this.eventStream.next({
         kind: 'snapshot',
-        envelope: parseRealtimePayload<PollingSnapshotEnvelope<JsonObject, string>>(
-          started.startPolling,
-        ),
+        envelope: snapshotEnvelope,
       });
     } catch (error) {
-      this.emitClientError(stream.target, this.getErrorMessage(error));
+      if (this.isActiveStream(stream)) {
+        this.emitClientError(stream.target, this.getErrorMessage(error));
+      }
+    }
+  }
+
+  private async resumeDomain(stream: ActiveRealtimeStream): Promise<void> {
+    try {
+      const resumed = await this.executeOperation<{
+        resumePolling: string;
+      }>(
+        `
+          mutation ResumePolling(
+            $streamId: String!
+            $domain: String!
+            $email: String!
+            $lastKnownHash: String
+          ) {
+            resumePolling(
+              streamId: $streamId
+              domain: $domain
+              email: $email
+              lastKnownHash: $lastKnownHash
+            )
+          }
+        `,
+        {
+          streamId: stream.streamId,
+          domain: stream.target.domain,
+          email: stream.target.email,
+          lastKnownHash: stream.snapshotHash ?? null,
+        },
+      );
+
+      if (!this.isActiveStream(stream)) {
+        return;
+      }
+
+      const resumeEnvelope =
+        parseRealtimePayload<PollingResumeEnvelope<JsonObject, string>>(
+          resumed.resumePolling,
+        );
+
+      stream.hasStarted = true;
+      if (resumeEnvelope.kind === 'resumed') {
+        stream.snapshotHash = resumeEnvelope.snapshotHash;
+        this.eventStream.next({
+          kind: 'resumed',
+          envelope: resumeEnvelope,
+        });
+        return;
+      }
+
+      stream.snapshotHash = resumeEnvelope.envelope.snapshotHash;
+      this.eventStream.next({
+        kind: 'reset',
+        sourceKey: resumeEnvelope.envelope.sourceKey,
+        target: resumeEnvelope.envelope.target,
+        receivedAt: resumeEnvelope.envelope.receivedAt,
+      });
+      this.eventStream.next({
+        kind: 'snapshot',
+        envelope: resumeEnvelope.envelope,
+      });
+    } catch (error) {
+      if (this.isActiveStream(stream)) {
+        this.emitClientError(stream.target, this.getErrorMessage(error));
+      }
     }
   }
 
@@ -224,7 +322,12 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
   private getEventDomain(
     event: RealtimeDomainClientEvent<JsonObject, string>,
   ): string {
-    if (event.kind === 'snapshot' || event.kind === 'patch' || event.kind === 'error') {
+    if (
+      event.kind === 'resumed' ||
+      event.kind === 'snapshot' ||
+      event.kind === 'patch' ||
+      event.kind === 'error'
+    ) {
       return event.envelope.target.domain;
     }
 
@@ -243,7 +346,7 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
 
   private async executeOperation<TData>(
     query: string,
-    variables: Dictionary<string>,
+    variables: Dictionary<unknown>,
   ): Promise<TData> {
     const response = await fetch(this.realtimeClientConfigService.diffEngineHttpUrl, {
       method: 'POST',
@@ -298,5 +401,18 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
 
     void this.graphqlWsClient.dispose();
     this.graphqlWsClient = null;
+  }
+
+  private isActiveStream(stream: ActiveRealtimeStream): boolean {
+    return this.activeTargets[stream.target.domain]?.streamId === stream.streamId;
+  }
+
+  private updateSnapshotHash(
+    stream: ActiveRealtimeStream,
+    event: RealtimeDomainClientEvent<JsonObject, string>,
+  ): void {
+    if (event.kind === 'snapshot' || event.kind === 'patch') {
+      stream.snapshotHash = event.envelope.snapshotHash;
+    }
   }
 }

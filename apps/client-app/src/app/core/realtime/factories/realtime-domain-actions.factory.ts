@@ -1,6 +1,7 @@
 import {
   JsonObject,
   PollingPatchEnvelope,
+  PollingResumeSuccessEnvelope,
   PollingSnapshotEnvelope,
   PollingStreamErrorEnvelope,
   PollingSubscriptionTarget,
@@ -33,6 +34,20 @@ export function createRealtimeDomainActions<
     ),
     disconnected: createAction(
       '[' + featureKey + '] Disconnected',
+      props<{
+        sourceKey: string;
+        target: PollingSubscriptionTarget<TDomain>;
+        receivedAt: string;
+      }>(),
+    ),
+    resumed: createAction(
+      '[' + featureKey + '] Resumed',
+      props<{
+        envelope: PollingResumeSuccessEnvelope<TDomain>;
+      }>(),
+    ),
+    sessionReset: createAction(
+      '[' + featureKey + '] Session Reset',
       props<{
         sourceKey: string;
         target: PollingSubscriptionTarget<TDomain>;

@@ -2,10 +2,13 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
   JsonObject,
   PollingPatchEnvelope,
+  PollingResumeEnvelope,
   PollingSnapshotEnvelope,
   PollingStopTarget,
   PollingStreamErrorEnvelope,
   PollingSubscriptionTarget,
+  SnapshotSessionRecord,
+  createSnapshotHash,
   normalizePollingTarget,
 } from '@org/models';
 import { PollingEventPublisherService } from '../../realtime/polling-event-publisher.service';
@@ -14,6 +17,8 @@ import { PollingDomainRegistryService } from './polling-domain-registry.service'
 import { PollingRuntimeRegistryService } from '../runtime/polling-runtime-registry.service';
 import { buildStreamDomainSessionKey } from '../runtime/session-key.util';
 import { SnapshotSessionStoreService } from '../store/services/snapshot-session-store.service';
+
+const POLLING_GRACE_PERIOD_MS = 15_000;
 
 @Injectable()
 export class PollingOrchestratorService {
@@ -44,26 +49,21 @@ export class PollingOrchestratorService {
     try {
       const domainSource = this.pollingDomainRegistryService.resolve(target);
       const snapshot = await domainSource.fetch(target);
+      const snapshotHash = createSnapshotHash(snapshot);
       const sessionKey = buildStreamDomainSessionKey(streamId, target.domain);
-      const intervalId = setInterval(() => {
-        void this.pollDomain(streamId, target.domain);
-      }, domainSource.getPollIntervalMs());
-
       const session = this.snapshotSessionStoreService.create(
         sessionKey,
         streamId,
         target,
         snapshot,
+        snapshotHash,
       );
-      this.pollingRuntimeRegistryService.register(sessionKey, intervalId);
+      this.pollingRuntimeRegistryService.register(
+        sessionKey,
+        this.createPollingInterval(streamId, target),
+      );
 
-      const envelope: PollingSnapshotEnvelope<JsonObject, string> = {
-        sourceKey: session.sourceKey,
-        target: session.target,
-        version: session.version,
-        receivedAt: new Date().toISOString(),
-        snapshot,
-      };
+      const envelope = this.createSnapshotEnvelope(session);
 
       this.logger.log(
         'Started polling for stream ' + streamId + ' on ' + session.sourceKey,
@@ -74,23 +74,99 @@ export class PollingOrchestratorService {
     }
   }
 
+  async resume(
+    streamId: string,
+    rawTarget: PollingSubscriptionTarget<string>,
+    lastKnownHash?: string,
+  ): Promise<PollingResumeEnvelope<JsonObject, string>> {
+    const target = normalizePollingTarget(rawTarget);
+    const sessionKey = buildStreamDomainSessionKey(streamId, target.domain);
+    const session = this.snapshotSessionStoreService.get(sessionKey);
+
+    if (
+      session &&
+      session.target.email === target.email &&
+      session.snapshotHash === lastKnownHash
+    ) {
+      this.pollingRuntimeRegistryService.resume(
+        sessionKey,
+        this.createPollingInterval(streamId, target),
+      );
+
+      this.logger.log(
+        'Resumed polling for stream ' + streamId + ' on ' + session.sourceKey,
+      );
+      return {
+        kind: 'resumed',
+        resetStore: false,
+        sourceKey: session.sourceKey,
+        target: session.target,
+        version: session.version,
+        snapshotHash: session.snapshotHash,
+        receivedAt: new Date().toISOString(),
+      };
+    }
+
+    const envelope = await this.start(streamId, target);
+    return {
+      kind: 'resynced',
+      resetStore: true,
+      envelope,
+    };
+  }
+
   stopDomain(streamId: string, target: PollingStopTarget<string>): boolean {
     const sessionKey = buildStreamDomainSessionKey(streamId, target.domain);
     const session = this.snapshotSessionStoreService.get(sessionKey);
-    if (!session) {
-      return false;
-    }
 
     this.pollingRuntimeRegistryService.clear(sessionKey);
-    this.snapshotSessionStoreService.delete(sessionKey);
-    this.logger.log(
-      'Stopped polling for stream ' +
-        streamId +
-        ' on domain ' +
-        target.domain +
-        '.',
-    );
-    return true;
+    if (session) {
+      this.snapshotSessionStoreService.delete(sessionKey);
+      this.logger.log(
+        'Stopped polling for stream ' +
+          streamId +
+          ' on domain ' +
+          target.domain +
+          '.',
+      );
+      return true;
+    }
+
+    return false;
+  }
+
+  pauseStreams(streamIds: string[]): void {
+    Array.from(new Set(streamIds)).forEach((streamId) => {
+      const sessions = this.snapshotSessionStoreService.listByStreamId(streamId);
+      sessions.forEach((session) => {
+        const paused = this.pollingRuntimeRegistryService.pause(
+          session.sessionKey,
+          () => {
+            this.snapshotSessionStoreService.delete(session.sessionKey);
+            this.logger.log(
+              'Destroyed paused polling for stream ' +
+                streamId +
+                ' on ' +
+                session.sourceKey +
+                '.',
+            );
+          },
+          POLLING_GRACE_PERIOD_MS,
+        );
+
+        if (paused) {
+          this.logger.log(
+            'Paused polling for stream ' +
+              streamId +
+              ' on ' +
+              session.sourceKey +
+              ' for ' +
+              POLLING_GRACE_PERIOD_MS +
+              'ms.',
+          );
+        }
+      });
+    });
   }
 
   private async pollDomain(streamId: string, domain: string): Promise<void> {
@@ -111,6 +187,10 @@ export class PollingOrchestratorService {
         session.target,
       );
       const latestSnapshot = await domainSource.fetch(session.target);
+      if (!this.pollingRuntimeRegistryService.isActive(sessionKey)) {
+        return;
+      }
+
       const operations = this.diffPatchService.createPatch(
         session.lastSnapshot,
         latestSnapshot,
@@ -120,9 +200,11 @@ export class PollingOrchestratorService {
         return;
       }
 
+      const snapshotHash = createSnapshotHash(latestSnapshot);
       const updatedSession = this.snapshotSessionStoreService.updateSnapshot(
         sessionKey,
         latestSnapshot,
+        snapshotHash,
       );
       if (!updatedSession) {
         return;
@@ -132,6 +214,7 @@ export class PollingOrchestratorService {
         sourceKey: updatedSession.sourceKey,
         target: updatedSession.target,
         version: updatedSession.version,
+        snapshotHash: updatedSession.snapshotHash,
         receivedAt: new Date().toISOString(),
         operations,
       });
@@ -177,5 +260,28 @@ export class PollingOrchestratorService {
     }
 
     return fallback;
+  }
+
+  private createPollingInterval(
+    streamId: string,
+    target: PollingSubscriptionTarget<string>,
+  ): ReturnType<typeof setInterval> {
+    const domainSource = this.pollingDomainRegistryService.resolve(target);
+    return setInterval(() => {
+      void this.pollDomain(streamId, target.domain);
+    }, domainSource.getPollIntervalMs());
+  }
+
+  private createSnapshotEnvelope(
+    session: SnapshotSessionRecord<JsonObject, string>,
+  ): PollingSnapshotEnvelope<JsonObject, string> {
+    return {
+      sourceKey: session.sourceKey,
+      target: session.target,
+      version: session.version,
+      snapshotHash: session.snapshotHash,
+      receivedAt: new Date().toISOString(),
+      snapshot: session.lastSnapshot,
+    };
   }
 }

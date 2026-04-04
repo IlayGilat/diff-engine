@@ -13,6 +13,7 @@ export function createSnapshotSessionRecord<
   streamId: string,
   target: PollingSubscriptionTarget<TDomain>,
   snapshot: TSnapshot,
+  snapshotHash: string,
 ): SnapshotSessionRecord<TSnapshot, TDomain> {
   return {
     sessionKey,
@@ -20,6 +21,7 @@ export function createSnapshotSessionRecord<
     sourceKey: buildSourceKey(target),
     target,
     version: 1,
+    snapshotHash,
     lastSnapshot: snapshot,
   };
 }
