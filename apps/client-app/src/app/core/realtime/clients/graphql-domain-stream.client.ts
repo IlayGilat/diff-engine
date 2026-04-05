@@ -1,24 +1,23 @@
-import { Injectable } from '@angular/core';
-import { inject } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import {
   ActiveRealtimeStream,
   Dictionary,
-  GraphqlOperationResponse,
   JsonObject,
-  PollingResumeEnvelope,
   PollingSnapshotEnvelope,
-  PollingStopTarget,
   PollingStreamErrorEnvelope,
   PollingSubscriptionTarget,
   RealtimeDomainClientEvent,
   buildSourceKey,
   normalizePollingTarget,
 } from '@org/models';
-import { Client, createClient } from 'graphql-ws';
+import { Client, ClientOptions, createClient } from 'graphql-ws';
 import { Observable, Subject, filter } from 'rxjs';
 import { RealtimeClientConfigService } from '../../config/services/realtime-client-config.service';
 import { AbstractDomainStreamClient } from './domain-stream-client.base';
 
+const HEARTBEAT_INTERVAL_MS = 10_000;
+
+// Parses the string payloads returned by the GraphQL API.
 function parseRealtimePayload<TValue>(payload: string): TValue {
   return JSON.parse(payload) as TValue;
 }
@@ -34,21 +33,23 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
     RealtimeDomainClientEvent<JsonObject, string>
   >();
 
+  // Opens one domain stream and starts polling from the server.
   connect<TDomain extends string, TSnapshot extends JsonObject>(
-    target: PollingSubscriptionTarget<TDomain>,
+    rawTarget: PollingSubscriptionTarget<TDomain>,
   ): Observable<RealtimeDomainClientEvent<TSnapshot, TDomain>> {
-    const normalizedTarget = normalizePollingTarget(target);
+    const normalizedTarget = normalizePollingTarget({
+      ...rawTarget,
+      streamId: rawTarget.streamId || this.createStreamId(rawTarget.domain),
+    });
+
     this.disconnect(normalizedTarget.domain);
 
     const stream: ActiveRealtimeStream = {
-      streamId: this.createStreamId(normalizedTarget),
+      streamId: normalizedTarget.streamId,
       target: normalizedTarget,
-      hasStarted: false,
-      snapshotHash: null,
     };
 
     this.activeTargets[normalizedTarget.domain] = stream;
-    this.ensureGraphqlWsClient();
     this.startSubscription(stream);
     void this.startDomain(stream);
 
@@ -57,6 +58,7 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
     ) as Observable<RealtimeDomainClientEvent<TSnapshot, TDomain>>;
   }
 
+  // Closes one active domain stream and stops server polling.
   disconnect(domainKey: string): void {
     const stream = this.activeTargets[domainKey];
     if (!stream) {
@@ -64,21 +66,24 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
     }
 
     delete this.activeTargets[domainKey];
+    this.stopHeartbeat(stream);
     stream.unsubscribe?.();
-    void this.stopDomain(stream);
     this.emitDomainDisconnected(stream.target);
 
-    if (Object.keys(this.activeTargets).length === 0) {
-      this.closeGraphqlWsClient();
-    }
+    void this.stopDomain(stream).finally(() => {
+      if (Object.keys(this.activeTargets).length === 0) {
+        this.closeGraphqlWsClient();
+      }
+    });
   }
 
-  private ensureGraphqlWsClient(): void {
+  // Creates the shared graphql-ws client on first use.
+  private ensureGraphqlWsClient(): Client {
     if (this.graphqlWsClient) {
-      return;
+      return this.graphqlWsClient;
     }
 
-    this.graphqlWsClient = createClient({
+    const options: ClientOptions = {
       url: this.realtimeClientConfigService.diffEngineWsUrl,
       on: {
         connected: (_socket, _payload, wasRetry) => {
@@ -87,24 +92,27 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
           }
 
           Object.values(this.activeTargets).forEach((stream) => {
-            void this.resumeDomain(stream);
+            void this.startDomain(stream);
           });
         },
         closed: () => {
           Object.values(this.activeTargets).forEach((stream) => {
+            this.stopHeartbeat(stream);
             this.emitDomainDisconnected(stream.target);
           });
         },
       },
-    });
+    };
+
+    this.graphqlWsClient = createClient(options);
+    return this.graphqlWsClient;
   }
 
+  // Starts the event subscription for one stream id.
   private startSubscription(stream: ActiveRealtimeStream): void {
-    if (!this.graphqlWsClient) {
-      return;
-    }
+    const graphqlWsClient = this.ensureGraphqlWsClient();
 
-    stream.unsubscribe = this.graphqlWsClient.subscribe(
+    stream.unsubscribe = graphqlWsClient.subscribe(
       {
         query: `
           subscription PollingEvents($streamId: String!) {
@@ -130,10 +138,7 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
             parseRealtimePayload<RealtimeDomainClientEvent<JsonObject, string>>(
               payload as string,
             );
-          this.updateSnapshotHash(stream, event);
-          this.eventStream.next(
-            event,
-          );
+          this.eventStream.next(event);
         },
         error: (error) => {
           if (!this.isActiveStream(stream)) {
@@ -151,7 +156,10 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
     );
   }
 
+  // Starts server polling and emits a fresh snapshot for the store.
   private async startDomain(stream: ActiveRealtimeStream): Promise<void> {
+    this.stopHeartbeat(stream);
+
     try {
       const started = await this.executeOperation<{
         startPolling: string;
@@ -160,19 +168,19 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
           mutation StartPolling(
             $streamId: String!
             $domain: String!
-            $email: String!
+            $params: JSONObject!
           ) {
             startPolling(
               streamId: $streamId
               domain: $domain
-              email: $email
+              params: $params
             )
           }
         `,
         {
           streamId: stream.streamId,
           domain: stream.target.domain,
-          email: stream.target.email,
+          params: stream.target.params,
         },
       );
 
@@ -184,8 +192,8 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
         parseRealtimePayload<PollingSnapshotEnvelope<JsonObject, string>>(
           started.startPolling,
         );
-      stream.hasStarted = true;
-      stream.snapshotHash = snapshotEnvelope.snapshotHash;
+
+      this.startHeartbeat(stream);
       this.eventStream.next({
         kind: 'connected',
         sourceKey: buildSourceKey(stream.target),
@@ -203,86 +211,17 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
     }
   }
 
-  private async resumeDomain(stream: ActiveRealtimeStream): Promise<void> {
-    try {
-      const resumed = await this.executeOperation<{
-        resumePolling: string;
-      }>(
-        `
-          mutation ResumePolling(
-            $streamId: String!
-            $domain: String!
-            $email: String!
-            $lastKnownHash: String
-          ) {
-            resumePolling(
-              streamId: $streamId
-              domain: $domain
-              email: $email
-              lastKnownHash: $lastKnownHash
-            )
-          }
-        `,
-        {
-          streamId: stream.streamId,
-          domain: stream.target.domain,
-          email: stream.target.email,
-          lastKnownHash: stream.snapshotHash ?? null,
-        },
-      );
-
-      if (!this.isActiveStream(stream)) {
-        return;
-      }
-
-      const resumeEnvelope =
-        parseRealtimePayload<PollingResumeEnvelope<JsonObject, string>>(
-          resumed.resumePolling,
-        );
-
-      stream.hasStarted = true;
-      if (resumeEnvelope.kind === 'resumed') {
-        stream.snapshotHash = resumeEnvelope.snapshotHash;
-        this.eventStream.next({
-          kind: 'resumed',
-          envelope: resumeEnvelope,
-        });
-        return;
-      }
-
-      stream.snapshotHash = resumeEnvelope.envelope.snapshotHash;
-      this.eventStream.next({
-        kind: 'reset',
-        sourceKey: resumeEnvelope.envelope.sourceKey,
-        target: resumeEnvelope.envelope.target,
-        receivedAt: resumeEnvelope.envelope.receivedAt,
-      });
-      this.eventStream.next({
-        kind: 'snapshot',
-        envelope: resumeEnvelope.envelope,
-      });
-    } catch (error) {
-      if (this.isActiveStream(stream)) {
-        this.emitClientError(stream.target, this.getErrorMessage(error));
-      }
-    }
-  }
-
+  // Stops server polling for one stream.
   private async stopDomain(stream: ActiveRealtimeStream): Promise<void> {
-    const stopPayload: PollingStopTarget<string> = {
-      domain: stream.target.domain,
-    };
-
     try {
       await this.executeOperation<{ stopPolling: boolean }>(
         `
-          mutation StopPolling($streamId: String!, $domain: String!) {
-            stopPolling(streamId: $streamId, domain: $domain)
+          mutation StopPolling($streamId: String!) {
+            stopPolling(streamId: $streamId)
           }
         `,
         {
           streamId: stream.streamId,
-          domain: stopPayload.domain,
         },
       );
     } catch {
@@ -290,6 +229,54 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
     }
   }
 
+  // Starts the TTL heartbeat on the same websocket connection.
+  private startHeartbeat(stream: ActiveRealtimeStream): void {
+    this.stopHeartbeat(stream);
+
+    stream.heartbeatIntervalId = setInterval(() => {
+      void this.sendHeartbeat(stream);
+    }, HEARTBEAT_INTERVAL_MS);
+  }
+
+  // Stops the TTL heartbeat when a stream disconnects.
+  private stopHeartbeat(stream: ActiveRealtimeStream): void {
+    if (!stream.heartbeatIntervalId) {
+      return;
+    }
+
+    clearInterval(stream.heartbeatIntervalId);
+    stream.heartbeatIntervalId = undefined;
+  }
+
+  // Refreshes the server lease and restarts polling if the lease was lost.
+  private async sendHeartbeat(stream: ActiveRealtimeStream): Promise<void> {
+    if (!this.isActiveStream(stream)) {
+      return;
+    }
+
+    try {
+      const heartbeat = await this.executeOperation<{ heartbeat: boolean }>(
+        `
+          mutation Heartbeat($streamId: String!) {
+            heartbeat(streamId: $streamId)
+          }
+        `,
+        {
+          streamId: stream.streamId,
+        },
+      );
+
+      if (!heartbeat.heartbeat && this.isActiveStream(stream)) {
+        await this.startDomain(stream);
+      }
+    } catch (error) {
+      if (this.isActiveStream(stream)) {
+        this.emitClientError(stream.target, this.getErrorMessage(error));
+      }
+    }
+  }
+
+  // Emits a disconnected event for one domain target.
   private emitDomainDisconnected(
     target: PollingSubscriptionTarget<string>,
   ): void {
@@ -301,6 +288,7 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
     });
   }
 
+  // Emits a client-side connect error as a normal stream event.
   private emitClientError(
     target: PollingSubscriptionTarget<string>,
     message: string,
@@ -319,11 +307,11 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
     });
   }
 
+  // Reads the domain key from any realtime event shape.
   private getEventDomain(
     event: RealtimeDomainClientEvent<JsonObject, string>,
   ): string {
     if (
-      event.kind === 'resumed' ||
       event.kind === 'snapshot' ||
       event.kind === 'patch' ||
       event.kind === 'error'
@@ -334,9 +322,10 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
     return event.target.domain;
   }
 
-  private createStreamId(target: PollingSubscriptionTarget<string>): string {
+  // Creates a stable stream id for the life of one connected domain.
+  private createStreamId(domain: string): string {
     return (
-      target.domain +
+      domain +
       '-' +
       Math.random().toString(36).slice(2, 10) +
       '-' +
@@ -344,37 +333,68 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
     );
   }
 
-  private async executeOperation<TData>(
+  // Runs GraphQL mutations over the active websocket so one pod owns the stream.
+  private executeOperation<TData>(
     query: string,
     variables: Dictionary<unknown>,
   ): Promise<TData> {
-    const response = await fetch(this.realtimeClientConfigService.diffEngineHttpUrl, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        query,
-        variables,
-      }),
+    const graphqlWsClient = this.ensureGraphqlWsClient();
+
+    return new Promise<TData>((resolve, reject) => {
+      let isSettled = false;
+      let unsubscribe: (() => void) | undefined;
+
+      unsubscribe = graphqlWsClient.subscribe(
+        {
+          query,
+          variables,
+        },
+        {
+          next: (result) => {
+            if (isSettled) {
+              return;
+            }
+
+            if (result.errors?.length) {
+              isSettled = true;
+              unsubscribe?.();
+              reject(
+                new Error(
+                  result.errors.map((error) => error.message).join(', '),
+                ),
+              );
+              return;
+            }
+
+            if (!result.data) {
+              return;
+            }
+
+            isSettled = true;
+            unsubscribe?.();
+            resolve(result.data as TData);
+          },
+          error: (error) => {
+            if (isSettled) {
+              return;
+            }
+
+            isSettled = true;
+            reject(new Error(this.getGraphqlWsErrorMessage(error)));
+          },
+          complete: () => {
+            if (isSettled) {
+              return;
+            }
+
+            reject(new Error('GraphQL operation completed without data.'));
+          },
+        },
+      );
     });
-
-    if (!response.ok) {
-      throw new Error('GraphQL request failed with status ' + response.status + '.');
-    }
-
-    const payload = (await response.json()) as GraphqlOperationResponse<TData>;
-    if (payload.errors?.length) {
-      throw new Error(payload.errors.map((error) => error.message).join(', '));
-    }
-
-    if (!payload.data) {
-      throw new Error('GraphQL response did not include data.');
-    }
-
-    return payload.data;
   }
 
+  // Turns graphql-ws transport errors into readable messages.
   private getGraphqlWsErrorMessage(error: unknown): string {
     if (Array.isArray(error) && error.length > 0) {
       const firstError = error[0] as { message?: string };
@@ -386,6 +406,7 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
     return this.getErrorMessage(error);
   }
 
+  // Turns unknown errors into a stable client message.
   private getErrorMessage(error: unknown): string {
     if (error instanceof Error) {
       return error.message;
@@ -394,6 +415,7 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
     return 'Failed to connect to the realtime stream.';
   }
 
+  // Disposes the shared websocket client when nothing is using it.
   private closeGraphqlWsClient(): void {
     if (!this.graphqlWsClient) {
       return;
@@ -403,16 +425,8 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
     this.graphqlWsClient = null;
   }
 
+  // Checks whether the stream still matches the active domain entry.
   private isActiveStream(stream: ActiveRealtimeStream): boolean {
     return this.activeTargets[stream.target.domain]?.streamId === stream.streamId;
-  }
-
-  private updateSnapshotHash(
-    stream: ActiveRealtimeStream,
-    event: RealtimeDomainClientEvent<JsonObject, string>,
-  ): void {
-    if (event.kind === 'snapshot' || event.kind === 'patch') {
-      stream.snapshotHash = event.envelope.snapshotHash;
-    }
   }
 }

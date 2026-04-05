@@ -3,6 +3,7 @@ import { Component, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { combineLatest, map } from 'rxjs';
 import { Store } from '@ngrx/store';
+import { JsonObject, JsonValue, isJsonObject } from '@org/models';
 import {
   hotspotsLayerActions,
 } from '../entities/hotspots/state/hotspots-layer.actions';
@@ -35,7 +36,8 @@ import { MapCanvasComponent } from '../features/map/map-canvas.component';
 export class AppComponent {
   private readonly store = inject(Store);
 
-  email = 'demo@example.com';
+  paramsJson = '{\n  "email": "demo@example.com"\n}';
+  paramsError: string | null = null;
   readonly regionsLayerUiMetadata = regionsLayerUiMetadata;
   readonly hotspotsLayerUiMetadata = hotspotsLayerUiMetadata;
   readonly regionsState$ = this.store.select(
@@ -70,21 +72,52 @@ export class AppComponent {
     })),
   );
 
+  // Starts the regions stream with the current params payload.
   connectRegions(): void {
-    this.store.dispatch(regionsLayerActions.connectRequested({ email: this.email }));
+    const params = this.readParams();
+    if (!params) {
+      return;
+    }
+
+    this.store.dispatch(regionsLayerActions.connectRequested({ params }));
   }
 
+  // Stops the regions stream.
   disconnectRegions(): void {
     this.store.dispatch(regionsLayerActions.disconnectRequested());
   }
 
+  // Starts the hotspots stream with the current params payload.
   connectHotspots(): void {
+    const params = this.readParams();
+    if (!params) {
+      return;
+    }
+
     this.store.dispatch(
-      hotspotsLayerActions.connectRequested({ email: this.email }),
+      hotspotsLayerActions.connectRequested({ params }),
     );
   }
 
+  // Stops the hotspots stream.
   disconnectHotspots(): void {
     this.store.dispatch(hotspotsLayerActions.disconnectRequested());
+  }
+
+  // Parses the params editor value into a plain JSON object.
+  private readParams(): JsonObject | null {
+    try {
+      const parsedValue = JSON.parse(this.paramsJson) as JsonValue;
+      if (!isJsonObject(parsedValue)) {
+        this.paramsError = 'Params must be a JSON object.';
+        return null;
+      }
+
+      this.paramsError = null;
+      return parsedValue;
+    } catch {
+      this.paramsError = 'Params must be valid JSON.';
+      return null;
+    }
   }
 }

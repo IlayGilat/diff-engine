@@ -1,7 +1,6 @@
 import {
   JsonObject,
   PollingPatchEnvelope,
-  PollingResumeSuccessEnvelope,
   PollingSnapshotEnvelope,
   PollingStreamErrorEnvelope,
   PollingSubscriptionTarget,
@@ -10,6 +9,7 @@ import {
 } from '@org/models';
 import { createAction, props } from '@ngrx/store';
 
+// Creates the shared action set for one realtime domain slice.
 export function createRealtimeDomainActions<
   TDomain extends string,
   TSnapshot extends JsonObject,
@@ -19,7 +19,7 @@ export function createRealtimeDomainActions<
   return {
     connectRequested: createAction(
       '[' + featureKey + '] Connect Requested',
-      props<{ email: string }>(),
+      props<{ params: JsonObject }>(),
     ),
     disconnectRequested: createAction(
       '[' + featureKey + '] Disconnect Requested',
@@ -34,20 +34,6 @@ export function createRealtimeDomainActions<
     ),
     disconnected: createAction(
       '[' + featureKey + '] Disconnected',
-      props<{
-        sourceKey: string;
-        target: PollingSubscriptionTarget<TDomain>;
-        receivedAt: string;
-      }>(),
-    ),
-    resumed: createAction(
-      '[' + featureKey + '] Resumed',
-      props<{
-        envelope: PollingResumeSuccessEnvelope<TDomain>;
-      }>(),
-    ),
-    sessionReset: createAction(
-      '[' + featureKey + '] Session Reset',
       props<{
         sourceKey: string;
         target: PollingSubscriptionTarget<TDomain>;

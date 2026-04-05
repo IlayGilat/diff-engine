@@ -26,11 +26,6 @@ export abstract class AbstractRealtimeEntityActions<
     TDomain,
     TSnapshot
   >['disconnected'];
-  readonly resumed: RealtimeDomainActionGroup<TDomain, TSnapshot>['resumed'];
-  readonly sessionReset: RealtimeDomainActionGroup<
-    TDomain,
-    TSnapshot
-  >['sessionReset'];
   readonly snapshotReceived: RealtimeDomainActionGroup<
     TDomain,
     TSnapshot
@@ -52,8 +47,6 @@ export abstract class AbstractRealtimeEntityActions<
     this.disconnectRequested = actionGroup.disconnectRequested;
     this.connected = actionGroup.connected;
     this.disconnected = actionGroup.disconnected;
-    this.resumed = actionGroup.resumed;
-    this.sessionReset = actionGroup.sessionReset;
     this.snapshotReceived = actionGroup.snapshotReceived;
     this.patchReceived = actionGroup.patchReceived;
     this.streamErrorReceived = actionGroup.streamErrorReceived;

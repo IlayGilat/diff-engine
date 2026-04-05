@@ -44,6 +44,7 @@ export abstract class AbstractRealtimeEntityEffects<
     );
   }
 
+  // Opens the realtime stream when the domain connect action is dispatched.
   protected createConnectEffect(
     domain: TDomain,
     actions: RealtimeDomainActionGroup<TDomain, TSnapshot>,
@@ -51,11 +52,12 @@ export abstract class AbstractRealtimeEntityEffects<
     return createEffect(() =>
       this.actions$.pipe(
         ofType(actions.connectRequested),
-        mergeMap((action: { email: string }) =>
+        mergeMap((action: { params: JsonObject }) =>
           this.socketClient
             .connect<TDomain, TSnapshot>({
+              streamId: '',
               domain,
-              email: action.email,
+              params: action.params,
             })
             .pipe(
               map((event) => this.mapRealtimeEventToAction(actions, event)),
@@ -66,6 +68,7 @@ export abstract class AbstractRealtimeEntityEffects<
     );
   }
 
+  // Closes the realtime stream when the domain disconnect action is dispatched.
   protected createDisconnectEffect(
     domain: TDomain,
     actions: RealtimeDomainActionGroup<TDomain, TSnapshot>,
@@ -82,6 +85,7 @@ export abstract class AbstractRealtimeEntityEffects<
     );
   }
 
+  // Maps shared realtime events into the domain-specific NgRx actions.
   private mapRealtimeEventToAction(
     actions: RealtimeDomainActionGroup<TDomain, TSnapshot>,
     event: RealtimeDomainClientEvent<TSnapshot, TDomain>,
@@ -95,16 +99,6 @@ export abstract class AbstractRealtimeEntityEffects<
         }) as Action;
       case 'disconnected':
         return actions.disconnected({
-          sourceKey: event.sourceKey,
-          target: event.target,
-          receivedAt: event.receivedAt,
-        }) as Action;
-      case 'resumed':
-        return actions.resumed({
-          envelope: event.envelope,
-        }) as Action;
-      case 'reset':
-        return actions.sessionReset({
           sourceKey: event.sourceKey,
           target: event.target,
           receivedAt: event.receivedAt,

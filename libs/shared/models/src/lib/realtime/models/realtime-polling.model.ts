@@ -10,12 +10,9 @@ export type PollingConnectionState =
 export type PollingErrorPhase = 'connect' | 'poll';
 
 export interface PollingSubscriptionTarget<TDomain extends string = string> {
+  streamId: string;
   domain: TDomain;
-  email: string;
-}
-
-export interface PollingStopTarget<TDomain extends string = string> {
-  domain: TDomain;
+  params: JsonObject;
 }
 
 export interface PollingSnapshotEnvelope<
@@ -25,7 +22,6 @@ export interface PollingSnapshotEnvelope<
   sourceKey: string;
   target: PollingSubscriptionTarget<TDomain>;
   version: number;
-  snapshotHash: string;
   receivedAt: string;
   snapshot: TSnapshot;
 }
@@ -34,36 +30,9 @@ export interface PollingPatchEnvelope<TDomain extends string = string> {
   sourceKey: string;
   target: PollingSubscriptionTarget<TDomain>;
   version: number;
-  snapshotHash: string;
   receivedAt: string;
   operations: Operation[];
 }
-
-export interface PollingResumeSuccessEnvelope<TDomain extends string = string> {
-  kind: 'resumed';
-  resetStore: false;
-  sourceKey: string;
-  target: PollingSubscriptionTarget<TDomain>;
-  version: number;
-  snapshotHash: string;
-  receivedAt: string;
-}
-
-export interface PollingResumeResyncEnvelope<
-  TSnapshot extends JsonObject = JsonObject,
-  TDomain extends string = string,
-> {
-  kind: 'resynced';
-  resetStore: true;
-  envelope: PollingSnapshotEnvelope<TSnapshot, TDomain>;
-}
-
-export type PollingResumeEnvelope<
-  TSnapshot extends JsonObject = JsonObject,
-  TDomain extends string = string,
-> =
-  | PollingResumeSuccessEnvelope<TDomain>
-  | PollingResumeResyncEnvelope<TSnapshot, TDomain>;
 
 export interface PollingStreamErrorEnvelope<TDomain extends string = string> {
   sourceKey: string;
@@ -81,7 +50,6 @@ export interface PollingSessionViewState<
   target: PollingSubscriptionTarget<TDomain>;
   snapshot: TSnapshot | null;
   version: number;
-  snapshotHash: string | null;
   lastReceivedAt: string | null;
   lastPatchOperationCount: number;
   connectionState: PollingConnectionState;
@@ -105,16 +73,6 @@ export type RealtimeDomainClientEvent<
       receivedAt: string;
     }
   | {
-      kind: 'resumed';
-      envelope: PollingResumeSuccessEnvelope<TDomain>;
-    }
-  | {
-      kind: 'reset';
-      sourceKey: string;
-      target: PollingSubscriptionTarget<TDomain>;
-      receivedAt: string;
-    }
-  | {
       kind: 'snapshot';
       envelope: PollingSnapshotEnvelope<TSnapshot, TDomain>;
     }
@@ -127,18 +85,20 @@ export type RealtimeDomainClientEvent<
       envelope: PollingStreamErrorEnvelope<TDomain>;
     };
 
+// Trims the shared target shape before it is used by the client or server.
 export function normalizePollingTarget<TDomain extends string>(
   target: PollingSubscriptionTarget<TDomain>,
 ): PollingSubscriptionTarget<TDomain> {
   return {
+    streamId: target.streamId.trim(),
     domain: target.domain.trim() as TDomain,
-    email: target.email.trim().toLowerCase(),
+    params: target.params,
   };
 }
 
+// Builds the stable source key that identifies one active stream.
 export function buildSourceKey<TDomain extends string>(
   target: PollingSubscriptionTarget<TDomain>,
 ): string {
-  const normalizedTarget = normalizePollingTarget(target);
-  return normalizedTarget.domain + ':' + normalizedTarget.email;
+  return normalizePollingTarget(target).streamId;
 }

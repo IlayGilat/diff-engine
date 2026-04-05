@@ -7,11 +7,13 @@ type Query {
 }
 
 type Mutation {
-  startPolling(streamId: String!, domain: String!, email: String!): String!
-  resumePolling(streamId: String!, domain: String!, email: String!, lastKnownHash: String): String!
-  stopPolling(streamId: String!, domain: String!): Boolean!
+  heartbeat(streamId: String!): Boolean!
+  startPolling(streamId: String!, domain: String!, params: JSONObject!): String!
+  stopPolling(streamId: String!): Boolean!
 }
 
 type Subscription {
   pollingEvents(streamId: String!): String!
 }
+
+scalar JSONObject

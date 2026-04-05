@@ -4,27 +4,22 @@ import { GraphQLModule } from '@nestjs/graphql';
 import { PubSub } from 'graphql-subscriptions';
 import { randomUUID } from 'node:crypto';
 import { AppController } from './app.controller';
-import { PollingDomainRegistryService } from '../core/polling/services/polling-domain-registry.service';
 import { DiffPatchService } from '../core/polling/services/diff-patch.service';
-import { PollingOrchestratorService } from '../core/polling/services/polling-orchestrator.service';
-import { PollingRuntimeRegistryService } from '../core/polling/runtime/polling-runtime-registry.service';
-import { InMemorySnapshotStoreAdapter } from '../core/polling/store/adapters/in-memory-snapshot-store.adapter';
-import { SnapshotStoreAdapterBuilder } from '../core/polling/store/builders/snapshot-store-adapter.builder';
-import { SnapshotSessionStoreService } from '../core/polling/store/services/snapshot-session-store.service';
-import { PollingConnectionRegistryService } from '../core/realtime/polling-connection-registry.service';
+import { PollingEngineService } from '../core/polling/services/polling-engine.service';
+import { SessionRegistryService } from '../core/polling/services/session-registry.service';
 import { PollingEventPublisherService } from '../core/realtime/polling-event-publisher.service';
 import { PollingGraphqlResolver } from '../core/realtime/polling-graphql.resolver';
 import { POLLING_PUB_SUB } from '../core/realtime/polling-pub-sub.constants';
-import { HotspotsDomainSourceService } from '../features/layers/services/hotspots-domain-source.service';
-import { RegionsDomainSourceService } from '../features/layers/services/regions-domain-source.service';
+import { JsonObjectScalar } from '../core/realtime/scalars/json-object.scalar';
+import { HotspotsPoller } from '../features/layers/pollers/hotspots.poller';
+import { RegionsPoller } from '../features/layers/pollers/regions.poller';
 
 @Module({
   imports: [
     GraphQLModule.forRootAsync<ApolloDriverConfig>({
-      inject: [PollingConnectionRegistryService, PollingOrchestratorService],
+      inject: [PollingEngineService],
       useFactory: (
-        pollingConnectionRegistryService: PollingConnectionRegistryService,
-        pollingOrchestratorService: PollingOrchestratorService,
+        pollingEngineService: PollingEngineService,
       ) => ({
         driver: ApolloDriver,
         path: '/graphql',
@@ -45,9 +40,7 @@ import { RegionsDomainSourceService } from '../features/layers/services/regions-
                 return;
               }
 
-              const streamIds =
-                pollingConnectionRegistryService.releaseConnection(connectionId);
-              pollingOrchestratorService.pauseStreams(streamIds);
+              pollingEngineService.stopConnection(connectionId);
             },
           },
         },
@@ -61,17 +54,13 @@ import { RegionsDomainSourceService } from '../features/layers/services/regions-
       useValue: new PubSub(),
     },
     DiffPatchService,
-    HotspotsDomainSourceService,
-    PollingConnectionRegistryService,
-    PollingDomainRegistryService,
+    HotspotsPoller,
+    JsonObjectScalar,
+    PollingEngineService,
     PollingEventPublisherService,
     PollingGraphqlResolver,
-    PollingOrchestratorService,
-    PollingRuntimeRegistryService,
-    RegionsDomainSourceService,
-    InMemorySnapshotStoreAdapter,
-    SnapshotStoreAdapterBuilder,
-    SnapshotSessionStoreService,
+    RegionsPoller,
+    SessionRegistryService,
   ],
 })
 export class AppModule {}

@@ -22,6 +22,7 @@ import { Operation } from 'fast-json-patch';
 import { applyPatch } from 'fast-json-patch';
 import { RealtimeDomainActionGroup } from '@org/models';
 
+// Creates the reducer that manages one realtime domain slice.
 export function createRealtimeDomainReducer<
   TDomain extends string,
   TSnapshot extends JsonObject,
@@ -31,10 +32,10 @@ export function createRealtimeDomainReducer<
 ): ActionReducer<RealtimeDomainFeatureState<TSnapshot, TDomain>> {
   return createReducer(
     createInitialFeatureState(definition),
-    on(actions.connectRequested, (state, { email }) => ({
+    on(actions.connectRequested, (state, { params }) => ({
       ...state,
       session: setConnectionState(
-        createSessionState<TDomain, TSnapshot>(definition.domain, email),
+        createSessionState<TDomain, TSnapshot>(definition.domain, params),
         'connecting',
         state.session.lastReceivedAt,
       ),
@@ -68,24 +69,6 @@ export function createRealtimeDomainReducer<
         lastReceivedAt: receivedAt,
       },
     })),
-    on(actions.resumed, (state, { envelope }) => ({
-      ...state,
-      session: {
-        ...state.session,
-        sourceKey: envelope.sourceKey,
-        target: envelope.target,
-        version: envelope.version,
-        snapshotHash: envelope.snapshotHash,
-        connectionState: 'connected' as PollingConnectionState,
-        lastReceivedAt: envelope.receivedAt,
-        errorMessage: null,
-      },
-    })),
-    on(actions.sessionReset, (state, { sourceKey, target, receivedAt }) => ({
-      ...state,
-      session: resetSessionState(state.session, sourceKey, target, receivedAt),
-      patchLog: [],
-    })),
     on(actions.snapshotReceived, (state, { envelope }) => ({
       ...state,
       session: {
@@ -93,7 +76,6 @@ export function createRealtimeDomainReducer<
         target: envelope.target,
         snapshot: envelope.snapshot,
         version: envelope.version,
-        snapshotHash: envelope.snapshotHash,
         lastReceivedAt: envelope.receivedAt,
         lastPatchOperationCount: 0,
         connectionState: 'connected' as PollingConnectionState,
@@ -142,6 +124,7 @@ export function createRealtimeDomainReducer<
   ) as unknown as ActionReducer<RealtimeDomainFeatureState<TSnapshot, TDomain>>;
 }
 
+// Creates the shared selectors for one realtime domain slice.
 export function createRealtimeDomainSelectors<
   TDomain extends string,
   TSnapshot extends JsonObject,
@@ -173,22 +156,25 @@ export function createRealtimeDomainSelectors<
   };
 }
 
+// Creates the empty feature state before any stream starts.
 function createInitialFeatureState<TDomain extends string, TSnapshot extends JsonObject>(
   definition: RealtimeDomainDefinition<TDomain>,
 ): RealtimeDomainFeatureState<TSnapshot, TDomain> {
   return {
-    session: createSessionState(definition.domain, ''),
+    session: createSessionState(definition.domain, {}),
     patchLog: [],
   };
 }
 
+// Creates the session shell that reducers fill as events arrive.
 function createSessionState<TDomain extends string, TSnapshot extends JsonObject>(
   domain: TDomain,
-  email: string,
+  params: JsonObject,
 ): PollingSessionViewState<TSnapshot, TDomain> {
   const target = {
+    streamId: '',
     domain,
-    email,
+    params,
   };
 
   return {
@@ -196,7 +182,6 @@ function createSessionState<TDomain extends string, TSnapshot extends JsonObject
     target,
     snapshot: null,
     version: 0,
-    snapshotHash: null,
     lastReceivedAt: null,
     lastPatchOperationCount: 0,
     connectionState: 'disconnected',
@@ -204,6 +189,7 @@ function createSessionState<TDomain extends string, TSnapshot extends JsonObject
   };
 }
 
+// Updates only the connection metadata on the session.
 function setConnectionState<TDomain extends string, TSnapshot extends JsonObject>(
   session: PollingSessionViewState<TSnapshot, TDomain>,
   connectionState: PollingConnectionState,
@@ -217,6 +203,7 @@ function setConnectionState<TDomain extends string, TSnapshot extends JsonObject
   };
 }
 
+// Applies one JSON patch envelope to the current snapshot.
 function applyPatchEnvelope<TDomain extends string, TSnapshot extends JsonObject>(
   session: PollingSessionViewState<TSnapshot, TDomain>,
   envelope: PollingPatchEnvelope<TDomain>,
@@ -236,7 +223,6 @@ function applyPatchEnvelope<TDomain extends string, TSnapshot extends JsonObject
     ...session,
     snapshot: patchResult.newDocument as TSnapshot,
     version: envelope.version,
-    snapshotHash: envelope.snapshotHash,
     lastReceivedAt: envelope.receivedAt,
     lastPatchOperationCount: envelope.operations.length,
     connectionState: 'connected',
@@ -244,28 +230,7 @@ function applyPatchEnvelope<TDomain extends string, TSnapshot extends JsonObject
   };
 }
 
-function resetSessionState<TDomain extends string, TSnapshot extends JsonObject>(
-  session: PollingSessionViewState<TSnapshot, TDomain>,
-  sourceKey: string,
-  target: {
-    domain: TDomain;
-    email: string;
-  },
-  receivedAt: string,
-): PollingSessionViewState<TSnapshot, TDomain> {
-  return {
-    sourceKey,
-    target,
-    snapshot: null,
-    version: 0,
-    snapshotHash: null,
-    lastReceivedAt: receivedAt,
-    lastPatchOperationCount: 0,
-    connectionState: session.connectionState,
-    errorMessage: null,
-  };
-}
-
+// Keeps only the latest patch log entries for the UI.
 function appendPatchLog(
   currentPatchLog: DomainPatchLogEntry[],
   patchLogEntry: DomainPatchLogEntry,
@@ -273,6 +238,7 @@ function appendPatchLog(
   return [patchLogEntry].concat(currentPatchLog).slice(0, 8);
 }
 
+// Builds a short human-readable summary for patch log rows.
 function describeOperations<TDomain extends string>(
   envelope: PollingPatchEnvelope<TDomain>,
 ): string {

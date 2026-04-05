@@ -1,20 +1,54 @@
 import { TestBed } from '@angular/core/testing';
-import {
-  PollingResumeEnvelope,
-  PollingSnapshotEnvelope,
-  PollingSubscriptionTarget,
-} from '@org/models';
+import { PollingSnapshotEnvelope, PollingSubscriptionTarget } from '@org/models';
+
+type GraphqlSink = {
+  next?: (result: Record<string, unknown>) => void;
+  error?: (error: unknown) => void;
+  complete?: () => void;
+};
 
 const graphqlWsClient = {
   subscribe: vi.fn(),
   dispose: vi.fn(),
 };
 let graphqlWsOptions: Record<string, any> | null = null;
+const operationResponses: Record<string, unknown[]> = {
+  startPolling: [],
+  stopPolling: [],
+  heartbeat: [],
+};
+const operationCalls: Array<{ query: string; variables: Record<string, unknown> }> = [];
 
 vi.mock('graphql-ws', () => ({
   createClient: vi.fn((options: Record<string, any>) => {
     graphqlWsOptions = options;
-    graphqlWsClient.subscribe.mockReturnValue(vi.fn());
+    graphqlWsClient.subscribe.mockImplementation(
+      (operation: { query: string; variables?: Record<string, unknown> }, sink: GraphqlSink) => {
+        operationCalls.push({
+          query: operation.query,
+          variables: operation.variables ?? {},
+        });
+
+        if (operation.query.includes('subscription PollingEvents')) {
+          return vi.fn();
+        }
+
+        const fieldName = readFieldName(operation.query);
+        const responseQueue = operationResponses[fieldName] ?? [];
+        const nextPayload = responseQueue.shift();
+
+        queueMicrotask(() => {
+          sink.next?.({
+            data: {
+              [fieldName]: nextPayload,
+            },
+          });
+          sink.complete?.();
+        });
+
+        return vi.fn();
+      },
+    );
     return graphqlWsClient;
   }),
 }));
@@ -23,16 +57,22 @@ import { GraphqlDomainStreamClientService } from '../clients/graphql-domain-stre
 
 describe('GraphqlDomainStreamClientService', () => {
   const target: PollingSubscriptionTarget<'regions'> = {
+    streamId: '',
     domain: 'regions',
-    email: 'demo@example.com',
+    params: {
+      email: 'demo@example.com',
+    },
   };
 
   beforeEach(() => {
     graphqlWsOptions = null;
-    graphqlWsClient.subscribe.mockReset();
-    graphqlWsClient.subscribe.mockReturnValue(vi.fn());
-    graphqlWsClient.dispose.mockReset();
-    vi.stubGlobal('fetch', vi.fn());
+    graphqlWsClient.subscribe.mockClear();
+    graphqlWsClient.dispose.mockClear();
+    operationCalls.length = 0;
+    operationResponses['startPolling'] = [];
+    operationResponses['stopPolling'] = [];
+    operationResponses['heartbeat'] = [];
+
     TestBed.configureTestingModule({
       providers: [GraphqlDomainStreamClientService],
     });
@@ -40,23 +80,13 @@ describe('GraphqlDomainStreamClientService', () => {
 
   afterEach(() => {
     TestBed.resetTestingModule();
-    vi.unstubAllGlobals();
   });
 
-  it('should resume from the last known hash without resetting the store', async () => {
+  it('should restart polling with a fresh snapshot after a websocket reconnect', async () => {
     const events: string[] = [];
-    mockGraphqlResponse('startPolling', createSnapshotEnvelope('hash-1'));
-    mockGraphqlResponse(
-      'resumePolling',
-      createResumeEnvelope({
-        kind: 'resumed',
-        resetStore: false,
-        sourceKey: 'regions:demo@example.com',
-        target,
-        version: 1,
-        snapshotHash: 'hash-1',
-        receivedAt: '2026-01-01T00:00:05.000Z',
-      }),
+    operationResponses['startPolling'].push(
+      JSON.stringify(createSnapshotEnvelope(1)),
+      JSON.stringify(createSnapshotEnvelope(2)),
     );
 
     const service = TestBed.inject(GraphqlDomainStreamClientService);
@@ -69,46 +99,30 @@ describe('GraphqlDomainStreamClientService', () => {
     graphqlWsOptions?.['on']?.['connected']?.({}, undefined, true);
     await flushAsyncWork();
 
-    const resumeRequest = getFetchRequestBody(1);
-    expect(resumeRequest['query']).toContain('resumePolling');
-    expect(resumeRequest['variables']?.['lastKnownHash']).toBe('hash-1');
-    expect(events).toEqual(['connected', 'snapshot', 'disconnected', 'resumed']);
-
-    subscription.unsubscribe();
-    service.disconnect(target.domain);
-  });
-
-  it('should reset and resend the full snapshot when the resume hash mismatches', async () => {
-    const events: string[] = [];
-    mockGraphqlResponse('startPolling', createSnapshotEnvelope('hash-1'));
-    mockGraphqlResponse(
-      'resumePolling',
-      createResumeEnvelope({
-        kind: 'resynced',
-        resetStore: true,
-        envelope: createSnapshotEnvelope('hash-2', 1, '2026-01-01T00:00:05.000Z'),
-      }),
+    const startCalls = operationCalls.filter((call) =>
+      call.query.includes('mutation StartPolling'),
     );
 
-    const service = TestBed.inject(GraphqlDomainStreamClientService);
-    const subscription = service.connect(target).subscribe((event) => {
-      events.push(event.kind);
-    });
-
-    await flushAsyncWork();
-    graphqlWsOptions?.['on']?.['closed']?.({});
-    graphqlWsOptions?.['on']?.['connected']?.({}, undefined, true);
-    await flushAsyncWork();
-
-    expect(events).toEqual(['connected', 'snapshot', 'disconnected', 'reset', 'snapshot']);
+    expect(startCalls).toHaveLength(2);
+    expect(startCalls[0]?.variables['streamId']).toBe(
+      startCalls[1]?.variables['streamId'],
+    );
+    expect(events).toEqual([
+      'connected',
+      'snapshot',
+      'disconnected',
+      'connected',
+      'snapshot',
+    ]);
 
     subscription.unsubscribe();
     service.disconnect(target.domain);
+    await flushAsyncWork();
   });
 
-  it('should hard stop on explicit disconnect without attempting auto-resume', async () => {
-    mockGraphqlResponse('startPolling', createSnapshotEnvelope('hash-1'));
-    mockGraphqlResponse('stopPolling', true);
+  it('should stop the active stream on explicit disconnect without auto-restarting it', async () => {
+    operationResponses['startPolling'].push(JSON.stringify(createSnapshotEnvelope(1)));
+    operationResponses['stopPolling'].push(true);
 
     const service = TestBed.inject(GraphqlDomainStreamClientService);
     const subscription = service.connect(target).subscribe();
@@ -119,28 +133,31 @@ describe('GraphqlDomainStreamClientService', () => {
     graphqlWsOptions?.['on']?.['connected']?.({}, undefined, true);
     await flushAsyncWork();
 
-    expect(getFetchRequestBody(0)['query']).toContain('startPolling');
-    expect(getFetchRequestBody(1)['query']).toContain('stopPolling');
-    expect((globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(2);
+    expect(
+      operationCalls.filter((call) => call.query.includes('mutation StartPolling')),
+    ).toHaveLength(1);
+    expect(
+      operationCalls.filter((call) => call.query.includes('mutation StopPolling')),
+    ).toHaveLength(1);
 
     subscription.unsubscribe();
   });
 });
 
 function createSnapshotEnvelope(
-  snapshotHash: string,
-  version = 1,
-  receivedAt = '2026-01-01T00:00:01.000Z',
+  version: number,
 ): PollingSnapshotEnvelope<any, 'regions'> {
   return {
-    sourceKey: 'regions:demo@example.com',
+    sourceKey: 'regions-stream',
     target: {
+      streamId: 'regions-stream',
       domain: 'regions',
-      email: 'demo@example.com',
+      params: {
+        email: 'demo@example.com',
+      },
     },
     version,
-    snapshotHash,
-    receivedAt,
+    receivedAt: '2026-01-01T00:00:0' + version + '.000Z',
     snapshot: {
       meta: {
         ownerEmail: 'demo@example.com',
@@ -159,30 +176,20 @@ function createSnapshotEnvelope(
   };
 }
 
-function createResumeEnvelope(
-  envelope: PollingResumeEnvelope<any, 'regions'>,
-): PollingResumeEnvelope<any, 'regions'> {
-  return envelope;
-}
+function readFieldName(query: string): string {
+  if (query.includes('startPolling')) {
+    return 'startPolling';
+  }
 
-function mockGraphqlResponse(fieldName: string, payload: unknown): void {
-  const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
-  fetchMock.mockResolvedValueOnce({
-    ok: true,
-    json: async () => ({
-      data: {
-        [fieldName]: JSON.stringify(payload),
-      },
-    }),
-  });
-}
+  if (query.includes('stopPolling')) {
+    return 'stopPolling';
+  }
 
-function getFetchRequestBody(index: number): Record<string, any> {
-  const fetchMock = globalThis.fetch as ReturnType<typeof vi.fn>;
-  return JSON.parse(fetchMock.mock.calls[index]?.[1]?.body as string) as Record<
-    string,
-    any
-  >;
+  if (query.includes('heartbeat')) {
+    return 'heartbeat';
+  }
+
+  throw new Error('Unknown GraphQL operation in test.');
 }
 
 async function flushAsyncWork(): Promise<void> {

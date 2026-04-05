@@ -3,7 +3,6 @@ import { JsonObject } from '../../common/models/json-value.model';
 import {
   PollingConnectionState,
   PollingPatchEnvelope,
-  PollingResumeSuccessEnvelope,
   PollingSessionViewState,
   PollingSnapshotEnvelope,
   PollingStreamErrorEnvelope,
@@ -44,7 +43,7 @@ export interface RealtimeDomainActionGroup<
 > {
   connectRequested: ActionCreator<
     string,
-    (props: { email: string }) => { email: string } & { type: string }
+    (props: { params: JsonObject }) => { params: JsonObject } & { type: string }
   >;
   disconnectRequested: ActionCreator<string, () => { type: string }>;
   connected: ActionCreator<
@@ -60,26 +59,6 @@ export interface RealtimeDomainActionGroup<
     } & { type: string }
   >;
   disconnected: ActionCreator<
-    string,
-    (props: {
-      sourceKey: string;
-      target: PollingSubscriptionTarget<TDomain>;
-      receivedAt: string;
-    }) => {
-      sourceKey: string;
-      target: PollingSubscriptionTarget<TDomain>;
-      receivedAt: string;
-    } & { type: string }
-  >;
-  resumed: ActionCreator<
-    string,
-    (props: {
-      envelope: PollingResumeSuccessEnvelope<TDomain>;
-    }) => {
-      envelope: PollingResumeSuccessEnvelope<TDomain>;
-    } & { type: string }
-  >;
-  sessionReset: ActionCreator<
     string,
     (props: {
       sourceKey: string;

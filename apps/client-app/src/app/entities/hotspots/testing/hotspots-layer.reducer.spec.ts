@@ -1,9 +1,5 @@
-import {
-  buildSourceKey,
-  createSnapshotHash,
-  HotspotsLayerSnapshot,
-} from '@org/models';
 import { Action } from '@ngrx/store';
+import { HotspotsLayerSnapshot, buildSourceKey } from '@org/models';
 import { hotspotsLayerActions } from '../state/hotspots-layer.actions';
 import { hotspotsLayerReducer } from '../state/hotspots-layer.reducer';
 
@@ -34,28 +30,20 @@ function createSnapshot(): HotspotsLayerSnapshot {
 }
 
 describe('hotspotsLayerReducer', () => {
-  it('should handle connect, snapshot, patch, resume, and disconnect events', () => {
+  it('should handle connect, snapshot, patch, and disconnect events', () => {
     const target = {
+      streamId: 'hotspots-stream',
       domain: 'hotspots' as const,
-      email: 'demo@example.com',
+      params: {
+        email: 'demo@example.com',
+      },
     };
     const initialSnapshot = createSnapshot();
-    const updatedSnapshot = {
-      ...initialSnapshot,
-      features: initialSnapshot.features.map((feature, index) =>
-        index === 0
-          ? {
-              ...feature,
-              radius: 18,
-            }
-          : feature,
-      ),
-    };
 
     let state = hotspotsLayerReducer(undefined, { type: '@@init' } as Action);
     state = hotspotsLayerReducer(
       state,
-      hotspotsLayerActions.connectRequested({ email: target.email }),
+      hotspotsLayerActions.connectRequested({ params: target.params }),
     );
     expect(state.session.connectionState).toBe('connecting');
 
@@ -66,14 +54,12 @@ describe('hotspotsLayerReducer', () => {
           sourceKey: buildSourceKey(target),
           target,
           version: 1,
-          snapshotHash: createSnapshotHash(initialSnapshot),
           receivedAt: '2026-01-01T00:00:01.000Z',
           snapshot: initialSnapshot,
         },
       }),
     );
     expect(state.session.snapshot?.features[0]?.radius).toBe(12);
-    expect(state.session.snapshotHash).toBe(createSnapshotHash(initialSnapshot));
 
     state = hotspotsLayerReducer(
       state,
@@ -82,7 +68,6 @@ describe('hotspotsLayerReducer', () => {
           sourceKey: buildSourceKey(target),
           target,
           version: 2,
-          snapshotHash: createSnapshotHash(updatedSnapshot),
           receivedAt: '2026-01-01T00:00:02.000Z',
           operations: [
             {
@@ -94,24 +79,6 @@ describe('hotspotsLayerReducer', () => {
         },
       }),
     );
-    expect(state.session.snapshot?.features[0]?.radius).toBe(18);
-    expect(state.session.snapshotHash).toBe(createSnapshotHash(updatedSnapshot));
-
-    state = hotspotsLayerReducer(
-      state,
-      hotspotsLayerActions.resumed({
-        envelope: {
-          kind: 'resumed',
-          resetStore: false,
-          sourceKey: buildSourceKey(target),
-          target,
-          version: 2,
-          snapshotHash: createSnapshotHash(updatedSnapshot),
-          receivedAt: '2026-01-01T00:00:03.000Z',
-        },
-      }),
-    );
-    expect(state.session.connectionState).toBe('connected');
     expect(state.session.snapshot?.features[0]?.radius).toBe(18);
 
     state = hotspotsLayerReducer(

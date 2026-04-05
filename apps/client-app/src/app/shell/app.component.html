@@ -30,17 +30,18 @@
   </section>
 
   <section class="control-strip">
-    <label for="email">User email</label>
-    <input
-      id="email"
-      type="email"
-      [(ngModel)]="email"
-      placeholder="name@example.com"
-    />
+    <label for="params">Request params</label>
+    <textarea
+      id="params"
+      rows="4"
+      [(ngModel)]="paramsJson"
+      spellcheck="false"
+    ></textarea>
     <p>
-      Both layers subscribe with the same identity, but each layer keeps its own
+      Both layers use the same JSON params payload, but each layer keeps its own
       explicit NgRx lifecycle and patch history.
     </p>
+    <p class="params-error" *ngIf="paramsError">{{ paramsError }}</p>
   </section>
 
   <section class="workspace">

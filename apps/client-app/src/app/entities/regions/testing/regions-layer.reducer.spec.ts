@@ -1,9 +1,5 @@
-import {
-  buildSourceKey,
-  createSnapshotHash,
-  RegionsLayerSnapshot,
-} from '@org/models';
 import { Action } from '@ngrx/store';
+import { buildSourceKey, RegionsLayerSnapshot } from '@org/models';
 import { regionsLayerActions } from '../state/regions-layer.actions';
 import { regionsLayerReducer } from '../state/regions-layer.reducer';
 
@@ -36,29 +32,21 @@ function createSnapshot(): RegionsLayerSnapshot {
 }
 
 describe('regionsLayerReducer', () => {
-  it('should handle connect, snapshot, patch, reset, and error events', () => {
+  it('should handle connect, snapshot, patch, and error events', () => {
     const connectedAt = '2026-01-01T00:00:01.000Z';
     const target = {
+      streamId: 'regions-stream',
       domain: 'regions' as const,
-      email: 'demo@example.com',
+      params: {
+        email: 'demo@example.com',
+      },
     };
     const initialSnapshot = createSnapshot();
-    const updatedSnapshot = {
-      ...initialSnapshot,
-      features: initialSnapshot.features.map((feature, index) =>
-        index === 0
-          ? {
-              ...feature,
-              intensity: 82,
-            }
-          : feature,
-      ),
-    };
 
     let state = regionsLayerReducer(undefined, { type: '@@init' } as Action);
     state = regionsLayerReducer(
       state,
-      regionsLayerActions.connectRequested({ email: target.email }),
+      regionsLayerActions.connectRequested({ params: target.params }),
     );
     expect(state.session.connectionState).toBe('connecting');
 
@@ -79,14 +67,12 @@ describe('regionsLayerReducer', () => {
           sourceKey: buildSourceKey(target),
           target,
           version: 1,
-          snapshotHash: createSnapshotHash(initialSnapshot),
           receivedAt: connectedAt,
           snapshot: initialSnapshot,
         },
       }),
     );
     expect(state.session.snapshot?.features.length).toBe(1);
-    expect(state.session.snapshotHash).toBe(createSnapshotHash(initialSnapshot));
 
     state = regionsLayerReducer(
       state,
@@ -95,7 +81,6 @@ describe('regionsLayerReducer', () => {
           sourceKey: buildSourceKey(target),
           target,
           version: 2,
-          snapshotHash: createSnapshotHash(updatedSnapshot),
           receivedAt: '2026-01-01T00:00:02.000Z',
           operations: [
             {
@@ -109,19 +94,6 @@ describe('regionsLayerReducer', () => {
     );
     expect(state.session.snapshot?.features[0]?.intensity).toBe(82);
     expect(state.patchLog[0]?.kind).toBe('patch');
-    expect(state.session.snapshotHash).toBe(createSnapshotHash(updatedSnapshot));
-
-    state = regionsLayerReducer(
-      state,
-      regionsLayerActions.sessionReset({
-        sourceKey: buildSourceKey(target),
-        target,
-        receivedAt: '2026-01-01T00:00:02.500Z',
-      }),
-    );
-    expect(state.session.snapshot).toBeNull();
-    expect(state.session.snapshotHash).toBeNull();
-    expect(state.patchLog).toEqual([]);
 
     state = regionsLayerReducer(
       state,
