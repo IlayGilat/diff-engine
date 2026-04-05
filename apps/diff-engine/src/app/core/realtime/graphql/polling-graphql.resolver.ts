@@ -7,9 +7,9 @@ import {
   Subscription,
 } from '@nestjs/graphql';
 import { JsonObject, PollingSubscriptionTarget } from '@org/models';
-import { PollingEngineService } from '../polling/services/polling-engine.service';
-import { PollingEventPublisherService } from './polling-event-publisher.service';
-import { JsonObjectScalar } from './scalars/json-object.scalar';
+import { PollingEngineService } from '../../polling/engine/polling-engine.service';
+import { PollingEventPublisherService } from '../events/polling-event-publisher.service';
+import { JsonObjectScalar } from '../scalars/json-object.scalar';
 
 @Resolver()
 export class PollingGraphqlResolver {

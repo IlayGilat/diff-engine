@@ -15,12 +15,12 @@ import {
 } from '@org/models';
 import { HotspotsPoller } from '../../../features/layers/pollers/hotspots.poller';
 import { RegionsPoller } from '../../../features/layers/pollers/regions.poller';
-import { PollingEventPublisherService } from '../../realtime/polling-event-publisher.service';
-import { ActivePollingSession } from '../models/active-polling-session.model';
+import { PollingEventPublisherService } from '../../realtime/events/polling-event-publisher.service';
+import { ActivePollingSession } from '../sessions/models/active-polling-session.model';
 import { createPollerCatalog, resolvePoller } from '../pollers/poller-catalog';
 import { PollingDomainPoller } from '../pollers/polling-domain-poller.model';
 import { DiffPatchService } from './diff-patch.service';
-import { SessionRegistryService } from './session-registry.service';
+import { SessionRegistryService } from '../sessions/session-registry.service';
 
 const DEFAULT_SESSION_TTL_MS = 30_000;
 const DEFAULT_CLEANUP_INTERVAL_MS = 5_000;

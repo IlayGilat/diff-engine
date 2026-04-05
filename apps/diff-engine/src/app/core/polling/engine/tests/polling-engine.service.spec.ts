@@ -1,8 +1,8 @@
 import { JsonObject } from '@org/models';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PollingEngineService } from './polling-engine.service';
-import { SessionRegistryService } from './session-registry.service';
-import { DiffPatchService } from './diff-patch.service';
+import { DiffPatchService } from '../diff-patch.service';
+import { PollingEngineService } from '../polling-engine.service';
+import { SessionRegistryService } from '../../sessions/session-registry.service';
 
 describe('PollingEngineService', () => {
   const streamId = 'regions-stream';

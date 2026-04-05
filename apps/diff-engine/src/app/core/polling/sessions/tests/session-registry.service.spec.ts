@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SessionRegistryService } from './session-registry.service';
+import { SessionRegistryService } from '../session-registry.service';
 
 describe('SessionRegistryService', () => {
   it('should bind and release stream ids by connection', () => {

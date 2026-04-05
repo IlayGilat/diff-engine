@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { ActivePollingSession } from '../models/active-polling-session.model';
+import { ActivePollingSession } from './models/active-polling-session.model';
 
 @Injectable()
 export class SessionRegistryService {
