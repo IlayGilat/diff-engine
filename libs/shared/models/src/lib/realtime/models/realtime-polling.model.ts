@@ -14,10 +14,6 @@ export interface PollingSubscriptionTarget<TDomain extends string = string> {
   email: string;
 }
 
-export interface PollingStopTarget<TDomain extends string = string> {
-  domain: TDomain;
-}
-
 export interface PollingSnapshotEnvelope<
   TSnapshot extends JsonObject = JsonObject,
   TDomain extends string = string,

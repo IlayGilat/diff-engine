@@ -3,10 +3,7 @@ import { inject } from '@angular/core';
 import {
   ActiveRealtimeStream,
   Dictionary,
-  GraphqlOperationResponse,
   JsonObject,
-  PollingSnapshotEnvelope,
-  PollingStopTarget,
   PollingStreamErrorEnvelope,
   PollingSubscriptionTarget,
   RealtimeDomainClientEvent,
@@ -37,21 +34,33 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
     target: PollingSubscriptionTarget<TDomain>,
   ): Observable<RealtimeDomainClientEvent<TSnapshot, TDomain>> {
     const normalizedTarget = normalizePollingTarget(target);
+    if (!normalizedTarget.domain || !normalizedTarget.email) {
+      queueMicrotask(() => {
+        this.emitClientError(
+          normalizedTarget,
+          'Both domain and email are required.',
+        );
+      });
+
+      return this.selectDomainEventStream<TDomain, TSnapshot>(
+        normalizedTarget.domain,
+      );
+    }
+
     this.disconnect(normalizedTarget.domain);
 
     const stream: ActiveRealtimeStream = {
-      streamId: this.createStreamId(normalizedTarget),
       target: normalizedTarget,
+      hasReceivedPayload: false,
     };
 
     this.activeTargets[normalizedTarget.domain] = stream;
     this.ensureGraphqlWsClient();
     this.startSubscription(stream);
-    void this.startDomain(stream);
 
-    return this.eventStream.pipe(
-      filter((event) => this.getEventDomain(event) === normalizedTarget.domain),
-    ) as Observable<RealtimeDomainClientEvent<TSnapshot, TDomain>>;
+    return this.selectDomainEventStream<TDomain, TSnapshot>(
+      normalizedTarget.domain,
+    );
   }
 
   disconnect(domainKey: string): void {
@@ -62,7 +71,6 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
 
     delete this.activeTargets[domainKey];
     stream.unsubscribe?.();
-    void this.stopDomain(stream);
     this.emitDomainDisconnected(stream.target);
 
     if (Object.keys(this.activeTargets).length === 0) {
@@ -76,10 +84,11 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
     }
 
     this.graphqlWsClient = createClient({
-      url: this.realtimeClientConfigService.diffEngineWsUrl,
+      url: this.realtimeClientConfigService.realtimeGraphqlWsUrl,
       on: {
         closed: () => {
           Object.values(this.activeTargets).forEach((stream) => {
+            stream.hasReceivedPayload = false;
             this.emitDomainDisconnected(stream.target);
           });
         },
@@ -95,12 +104,13 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
     stream.unsubscribe = this.graphqlWsClient.subscribe(
       {
         query: `
-          subscription PollingEvents($streamId: String!) {
-            pollingEvents(streamId: $streamId)
+          subscription PollingEvents($domain: String!, $email: String!) {
+            pollingEvents(domain: $domain, email: $email)
           }
         `,
         variables: {
-          streamId: stream.streamId,
+          domain: stream.target.domain,
+          email: stream.target.email,
         },
       },
       {
@@ -108,6 +118,16 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
           const payload = result.data?.['pollingEvents'];
           if (!payload) {
             return;
+          }
+
+          if (!stream.hasReceivedPayload) {
+            stream.hasReceivedPayload = true;
+            this.eventStream.next({
+              kind: 'connected',
+              sourceKey: buildSourceKey(stream.target),
+              target: stream.target,
+              receivedAt: new Date().toISOString(),
+            });
           }
 
           this.eventStream.next(
@@ -120,76 +140,15 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
           this.emitClientError(stream.target, this.getGraphqlWsErrorMessage(error));
         },
         complete: () => {
-          if (this.activeTargets[stream.target.domain]) {
+          if (
+            this.activeTargets[stream.target.domain] &&
+            stream.hasReceivedPayload
+          ) {
             this.emitDomainDisconnected(stream.target);
           }
         },
       },
     );
-  }
-
-  private async startDomain(stream: ActiveRealtimeStream): Promise<void> {
-    try {
-      const started = await this.executeOperation<{
-        startPolling: string;
-      }>(
-        `
-          mutation StartPolling(
-            $streamId: String!
-            $domain: String!
-            $email: String!
-          ) {
-            startPolling(
-              streamId: $streamId
-              domain: $domain
-              email: $email
-            )
-          }
-        `,
-        {
-          streamId: stream.streamId,
-          domain: stream.target.domain,
-          email: stream.target.email,
-        },
-      );
-
-      this.eventStream.next({
-        kind: 'connected',
-        sourceKey: buildSourceKey(stream.target),
-        target: stream.target,
-        receivedAt: new Date().toISOString(),
-      });
-      this.eventStream.next({
-        kind: 'snapshot',
-        envelope: parseRealtimePayload<PollingSnapshotEnvelope<JsonObject, string>>(
-          started.startPolling,
-        ),
-      });
-    } catch (error) {
-      this.emitClientError(stream.target, this.getErrorMessage(error));
-    }
-  }
-
-  private async stopDomain(stream: ActiveRealtimeStream): Promise<void> {
-    const stopPayload: PollingStopTarget<string> = {
-      domain: stream.target.domain,
-    };
-
-    try {
-      await this.executeOperation<{ stopPolling: boolean }>(
-        `
-          mutation StopPolling($streamId: String!, $domain: String!) {
-            stopPolling(streamId: $streamId, domain: $domain)
-          }
-        `,
-        {
-          streamId: stream.streamId,
-          domain: stopPayload.domain,
-        },
-      );
-    } catch {
-      return;
-    }
   }
 
   private emitDomainDisconnected(
@@ -231,45 +190,12 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
     return event.target.domain;
   }
 
-  private createStreamId(target: PollingSubscriptionTarget<string>): string {
-    return (
-      target.domain +
-      '-' +
-      Math.random().toString(36).slice(2, 10) +
-      '-' +
-      Date.now().toString(36)
-    );
-  }
-
-  private async executeOperation<TData>(
-    query: string,
-    variables: Dictionary<string>,
-  ): Promise<TData> {
-    const response = await fetch(this.realtimeClientConfigService.diffEngineHttpUrl, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        query,
-        variables,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error('GraphQL request failed with status ' + response.status + '.');
-    }
-
-    const payload = (await response.json()) as GraphqlOperationResponse<TData>;
-    if (payload.errors?.length) {
-      throw new Error(payload.errors.map((error) => error.message).join(', '));
-    }
-
-    if (!payload.data) {
-      throw new Error('GraphQL response did not include data.');
-    }
-
-    return payload.data;
+  private selectDomainEventStream<TDomain extends string, TSnapshot extends JsonObject>(
+    domainKey: string,
+  ): Observable<RealtimeDomainClientEvent<TSnapshot, TDomain>> {
+    return this.eventStream.pipe(
+      filter((event) => this.getEventDomain(event) === domainKey),
+    ) as Observable<RealtimeDomainClientEvent<TSnapshot, TDomain>>;
   }
 
   private getGraphqlWsErrorMessage(error: unknown): string {
@@ -288,7 +214,7 @@ export class GraphqlDomainStreamClientService extends AbstractDomainStreamClient
       return error.message;
     }
 
-    return 'Failed to connect to the realtime stream.';
+    return 'Failed to connect to the realtime GraphQL stream.';
   }
 
   private closeGraphqlWsClient(): void {

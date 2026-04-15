@@ -1,13 +1,11 @@
-import { Args, Mutation, Query, Resolver, Subscription } from '@nestjs/graphql';
+import { Args, Query, Resolver, Subscription } from '@nestjs/graphql';
 import { PollingSubscriptionTarget } from '@org/models';
-import { PollingOrchestratorService } from '../polling/services/polling-orchestrator.service';
-import { PollingEventPublisherService } from './polling-event-publisher.service';
+import { PollingSubscriptionStreamService } from './polling-subscription-stream.service';
 
 @Resolver()
 export class PollingGraphqlResolver {
   constructor(
-    private readonly pollingOrchestratorService: PollingOrchestratorService,
-    private readonly pollingEventPublisherService: PollingEventPublisherService,
+    private readonly pollingSubscriptionStreamService: PollingSubscriptionStreamService,
   ) {}
 
   @Query(() => String)
@@ -15,36 +13,18 @@ export class PollingGraphqlResolver {
     return 'ok';
   }
 
-  @Mutation(() => String)
-  async startPolling(
-    @Args('streamId') streamId: string,
+  @Subscription(() => String, {
+    resolve: (payload: string) => payload,
+  })
+  pollingEvents(
     @Args('domain') domain: string,
     @Args('email') email: string,
-  ): Promise<string> {
+  ): AsyncIterable<string> {
     const target: PollingSubscriptionTarget<string> = {
       domain,
       email,
     };
 
-    const envelope = await this.pollingOrchestratorService.start(streamId, target);
-    return JSON.stringify(envelope);
-  }
-
-  @Mutation(() => Boolean)
-  stopPolling(
-    @Args('streamId') streamId: string,
-    @Args('domain') domain: string,
-  ): boolean {
-    return this.pollingOrchestratorService.stopDomain(streamId, {
-      domain,
-    });
-  }
-
-  @Subscription(() => String, {
-    resolve: (payload: { pollingEvents: unknown }) =>
-      JSON.stringify(payload.pollingEvents),
-  })
-  pollingEvents(@Args('streamId') streamId: string): AsyncIterable<unknown> {
-    return this.pollingEventPublisherService.createAsyncIterator(streamId);
+    return this.pollingSubscriptionStreamService.stream(target);
   }
 }
