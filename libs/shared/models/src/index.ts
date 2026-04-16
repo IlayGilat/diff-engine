@@ -8,5 +8,4 @@ export * from './lib/map/snapshots/regions-layer-state.model';
 export * from './lib/realtime/models/polling-domain-source.model';
 export * from './lib/realtime/models/realtime-domain.model';
 export * from './lib/realtime/models/realtime-polling.model';
-export * from './lib/realtime/models/realtime-stream-client.model';
 export type { Dictionary } from 'lodash';
