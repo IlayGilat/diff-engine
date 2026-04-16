@@ -12,6 +12,7 @@
       "options": {
         "outputPath": "dist/apps/client-app",
         "browser": "apps/client-app/src/main.ts",
+        "polyfills": ["zone.js"],
         "tsConfig": "apps/client-app/tsconfig.app.json",
         "assets": [
           {
@@ -63,7 +64,11 @@
     },
     "test": {
       "executor": "@angular/build:unit-test",
-      "options": {}
+      "options": {
+        "buildTarget": "client-app:build:development",
+        "tsConfig": "apps/client-app/tsconfig.spec.json",
+        "runner": "vitest"
+      }
     },
     "serve-static": {
       "continuous": true,

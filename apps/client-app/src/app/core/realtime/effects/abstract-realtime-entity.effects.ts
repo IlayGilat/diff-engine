@@ -13,8 +13,8 @@ import {
   ofType,
 } from '@ngrx/effects';
 import { Action } from '@ngrx/store';
-import { Observable, map, mergeMap, takeUntil, tap } from 'rxjs';
-import { GraphqlDomainStreamClientService } from '../clients/graphql-domain-stream.client';
+import { Observable, map, switchMap, takeUntil } from 'rxjs';
+import { RealtimeSubscriptionClientService } from '../clients/realtime-subscription.client';
 import { createRealtimeDomainActions } from '../factories/realtime-domain-actions.factory';
 import { createRealtimeDomainDefinition } from '../factories/realtime-domain-definition.factory';
 
@@ -23,11 +23,10 @@ export abstract class AbstractRealtimeEntityEffects<
   TSnapshot extends JsonObject,
 > {
   protected readonly actions$ = inject(Actions);
-  protected readonly socketClient = inject(GraphqlDomainStreamClientService);
+  protected readonly socketClient = inject(RealtimeSubscriptionClientService);
   protected readonly definition: RealtimeDomainDefinition<TDomain>;
   protected readonly entityActions: RealtimeDomainActionGroup<TDomain, TSnapshot>;
   readonly connect$: Observable<Action> & CreateEffectMetadata;
-  readonly disconnect$: Observable<Action> & CreateEffectMetadata;
 
   protected constructor(domain: TDomain, featureKey: RealtimeFeatureKey) {
     this.definition = createRealtimeDomainDefinition(domain, featureKey);
@@ -35,10 +34,6 @@ export abstract class AbstractRealtimeEntityEffects<
       featureKey,
     );
     this.connect$ = this.createConnectEffect(
-      this.definition.domain,
-      this.entityActions,
-    );
-    this.disconnect$ = this.createDisconnectEffect(
       this.definition.domain,
       this.entityActions,
     );
@@ -51,7 +46,7 @@ export abstract class AbstractRealtimeEntityEffects<
     return createEffect(() =>
       this.actions$.pipe(
         ofType(actions.connectRequested),
-        mergeMap((action: { email: string }) =>
+        switchMap((action: { email: string }) =>
           this.socketClient
             .connect<TDomain, TSnapshot>({
               domain,
@@ -63,22 +58,6 @@ export abstract class AbstractRealtimeEntityEffects<
             ),
         ),
       ),
-    );
-  }
-
-  protected createDisconnectEffect(
-    domain: TDomain,
-    actions: RealtimeDomainActionGroup<TDomain, TSnapshot>,
-  ): Observable<Action> & CreateEffectMetadata {
-    return createEffect(
-      () =>
-        this.actions$.pipe(
-          ofType(actions.disconnectRequested),
-          tap(() => {
-            this.socketClient.disconnect(domain);
-          }),
-        ),
-      { dispatch: false },
     );
   }
 

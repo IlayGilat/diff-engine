@@ -1,9 +1,4 @@
-import {
-  Dictionary,
-  JsonObject,
-  PollingSourceDefinition,
-  PollingSubscriptionTarget,
-} from '@org/models';
+import { JsonObject, PollingSourceDefinition, PollingSubscriptionTarget } from '@org/models';
 
 export abstract class AbstractPollingDomainSource<
   TDomain extends string = string,
@@ -28,31 +23,4 @@ export abstract class AbstractPollingDomainSource<
   abstract fetch(
     target: PollingSubscriptionTarget<TDomain>,
   ): Promise<TSnapshot>;
-
-  protected async fetchJson(
-    target: PollingSubscriptionTarget<TDomain>,
-    headers: Dictionary<string> = this.definition.headers ?? {},
-  ): Promise<TSnapshot> {
-    const params = new URLSearchParams({
-      email: target.email,
-    });
-    const response = await fetch(
-      this.definition.baseUrl + this.definition.path + '?' + params.toString(),
-      {
-        headers,
-      },
-    );
-
-    if (!response.ok) {
-      throw new Error(
-        'External API returned status ' +
-          response.status +
-          ' for domain "' +
-          this.definition.domain +
-          '".',
-      );
-    }
-
-    return (await response.json()) as TSnapshot;
-  }
 }
